@@ -9,7 +9,7 @@
   specific language governing permissions and limitations under the License.
 */
 
-import { aligned_alloc_type, linkWasm } from "./wasm";
+import { aligned_alloc_type, buildWasm } from "./wasm";
 
 import {
   arrayBufferToBase64AtIndex,
@@ -24,7 +24,7 @@ import {
 export {
   // wasm exports
   aligned_alloc_type,
-  linkWasm,
+  buildWasm,
   // utils exports
   arrayBufferToBase64AtIndex,
   arrayBufferToStringAtIndex,

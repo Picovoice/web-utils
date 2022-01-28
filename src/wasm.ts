@@ -31,7 +31,7 @@ export type aligned_alloc_type = (alignment: number, size: number) => Promise<nu
  * @param wasm_base64 The wasm file in base64 string to initialize.
  * @returns An object containing the exported functions from WASM.
  */
-export async function linkWasm(
+export async function buildWasm(
   memory: WebAssembly.Memory,
   wasm_base64: string
 ): Promise<any> {
