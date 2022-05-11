@@ -23,10 +23,11 @@ import {
 import { wasiSnapshotPreview1Emulator } from './wasi_snapshot';
 
 export type aligned_alloc_type = (alignment: number, size: number) => Promise<number>;
+export type pv_free_type = (ptr: number) => Promise<void>;
 
 /**
  * Imports and Exports functions required for WASM.
- * 
+ *
  * @param memory Initialized WebAssembly memory object.
  * @param wasm_base64 The wasm file in base64 string to initialize.
  * @returns An object containing the exported functions from WASM.
