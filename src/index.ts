@@ -21,6 +21,10 @@ import {
   stringHeaderToObject,
 } from './utils';
 
+import {
+  PvFile
+} from "./pv_file";
+
 export {
   // wasm exports
   aligned_alloc_type,
@@ -34,4 +38,6 @@ export {
   getPvStorage,
   isAccessKeyValid,
   stringHeaderToObject,
+  // PvFile
+  PvFile,
 };
