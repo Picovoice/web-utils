@@ -9,13 +9,20 @@
   specific language governing permissions and limitations under the License.
 */
 
+/* eslint camelcase: 0 */
+
 import { aligned_alloc_type, pv_free_type, buildWasm } from "./wasm";
 
 import {
+  DB_NAME,
+  DB_VERSION,
+  STORE_NAME,
+  PV_FILE_STORE,
   arrayBufferToBase64AtIndex,
   arrayBufferToStringAtIndex,
   base64ToUint8Array,
   fetchWithTimeout,
+  getDB,
   getPvStorage,
   isAccessKeyValid,
   stringHeaderToObject,
@@ -25,16 +32,25 @@ import {
   PvFile
 } from "./pv_file";
 
+const dbConfig = {
+  DB_NAME,
+  DB_VERSION,
+  STORE_NAME,
+  PV_FILE_STORE
+};
+
 export {
   // wasm exports
   aligned_alloc_type,
   pv_free_type,
   buildWasm,
   // utils exports
+  dbConfig,
   arrayBufferToBase64AtIndex,
   arrayBufferToStringAtIndex,
   base64ToUint8Array,
   fetchWithTimeout,
+  getDB,
   getPvStorage,
   isAccessKeyValid,
   stringHeaderToObject,
