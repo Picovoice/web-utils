@@ -9,6 +9,8 @@
   specific language governing permissions and limitations under the License.
 */
 
+/// <reference types="cypress" />
+
 import { PvFile } from "../src";
 
 const buildData = (size: number) => {
