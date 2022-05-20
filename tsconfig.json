@@ -13,8 +13,8 @@
       "resolveJsonModule": true,
       "sourceMap": true,
       "strict": false,
-      "target": "esnext"
+      "target": "esnext",
+      "types": ["cypress"],
     },
     "exclude": ["node_modules", "dist"]
   }
-  

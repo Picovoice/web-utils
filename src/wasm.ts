@@ -9,6 +9,8 @@
   specific language governing permissions and limitations under the License.
 */
 
+/* eslint camelcase: 0 */
+
 import * as Asyncify from 'asyncify-wasm';
 
 import {
@@ -20,7 +22,9 @@ import {
   stringHeaderToObject,
 } from './utils';
 
-import { wasiSnapshotPreview1Emulator } from './wasi_snapshot';
+import {PvFile} from "./pv_file";
+
+import {wasiSnapshotPreview1Emulator} from './wasi_snapshot';
 
 export type aligned_alloc_type = (alignment: number, size: number) => Promise<number>;
 export type pv_free_type = (ptr: number) => Promise<void>;
@@ -29,12 +33,12 @@ export type pv_free_type = (ptr: number) => Promise<void>;
  * Imports and Exports functions required for WASM.
  *
  * @param memory Initialized WebAssembly memory object.
- * @param wasm_base64 The wasm file in base64 string to initialize.
+ * @param wasm The wasm file in base64 string or stream to public path (i.e. fetch("file.wasm")) to initialize.
  * @returns An object containing the exported functions from WASM.
  */
 export async function buildWasm(
   memory: WebAssembly.Memory,
-  wasm_base64: string
+  wasm: string | Promise<Response>
 ): Promise<any> {
   const memoryBufferUint8 = new Uint8Array(memory.buffer);
   const memoryBufferInt32 = new Int32Array(memory.buffer);
@@ -217,8 +221,8 @@ export async function buildWasm(
     const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
 
     try {
-      const isExists = await storage.getItem(path);
-      memoryBufferUint8[isExistsAddress] = (isExists === undefined || isExists === null) ? 0 : 1;
+      const isExists = await storage.exists(path);
+      memoryBufferUint8[isExistsAddress] = (isExists) ? 1 : 0;
       memoryBufferInt32[
         succeededAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 1;
@@ -289,39 +293,148 @@ export async function buildWasm(
     memoryBufferUint8[originInfoAddress + origin.length] = 0;
   };
 
+  const pvFileOpenWasm = async function(
+    fileAddress: number,
+    pathAddress: number,
+    modeAddress: number,
+    statusAddress: number
+  ) {
+    const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
+    const mode = arrayBufferToStringAtIndex(memoryBufferUint8, modeAddress);
+    try {
+      const file = await PvFile.open(path, mode);
+      PvFile.setPtr(fileAddress, file);
+      memoryBufferInt32[
+        statusAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = 0;
+    } catch (e) {
+      memoryBufferInt32[
+        statusAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = -1;
+    }
+  };
+
+  const pvFileCloseWasm = async function(
+    fileAddress: number,
+    statusAddress: number
+  ) {
+    try {
+      const file = await PvFile.getPtr(fileAddress);
+      await file.close();
+      memoryBufferInt32[
+        statusAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = 0;
+    } catch (e) {
+      memoryBufferInt32[
+        statusAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = -1;
+    }
+  };
+
+  const pvFileReadWasm = async function(
+    fileAddress: number,
+    contentAddress: number,
+    size: number,
+    count: number,
+    numReadAddress: number
+  ) {
+    try {
+      const file = await PvFile.getPtr(fileAddress);
+      const content = await file.read(size, count);
+      memoryBufferUint8.set(content, contentAddress);
+      memoryBufferInt32[
+        numReadAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = (content.length / size);
+    } catch (e) {
+      memoryBufferInt32[
+        numReadAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = -1;
+    }
+  };
+
+  const pvFileSeekWasm = async function(
+    fileAddress: number,
+    offset: number,
+    whence: number,
+    statusAddress: number
+  ) {
+    try {
+      const file = PvFile.getPtr(fileAddress);
+      file.seek(offset, whence);
+      memoryBufferInt32[
+        statusAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = 0;
+    } catch (e) {
+      memoryBufferInt32[
+        statusAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = -1;
+    }
+  };
+
+  const pvFileTellWasm = async function(
+    fileAddress: number,
+    offsetAddress: number,
+  ) {
+    try {
+      const file = PvFile.getPtr(fileAddress);
+      memoryBufferInt32[
+        offsetAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = file.tell();
+    } catch (e) {
+      memoryBufferInt32[
+        offsetAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = -1;
+    }
+  };
+
+  const pvFileRemoveWasm = async function(
+    pathAddress: number,
+    statusAddress: number
+  ) {
+    const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
+    try {
+      await PvFile.remove(path);
+      memoryBufferInt32[
+        statusAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = 0;
+    } catch (e) {
+      memoryBufferInt32[
+        statusAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = -1;
+    }
+  };
+
   const importObject = {
     // eslint-disable-next-line camelcase
     wasi_snapshot_preview1: wasiSnapshotPreview1Emulator,
     env: {
       memory: memory,
-      // eslint-disable-next-line camelcase
       pv_console_log_wasm: pvConsoleLogWasm,
-      // eslint-disable-next-line camelcase
       pv_assert_wasm: pvAssertWasm,
-      // eslint-disable-next-line camelcase
       pv_time_wasm: pvTimeWasm,
-      // eslint-disable-next-line camelcase
       pv_https_request_wasm: pvHttpsRequestWasm,
-      // eslint-disable-next-line camelcase
       pv_file_load_wasm: pvFileLoadWasm,
-      // eslint-disable-next-line camelcase
       pv_file_save_wasm: pvFileSaveWasm,
-      // eslint-disable-next-line camelcase
       pv_file_exists_wasm: pvFileExistsWasm,
-      // eslint-disable-next-line camelcase
       pv_file_delete_wasm: pvFileDeleteWasm,
-      // eslint-disable-next-line camelcase
       pv_get_browser_info: pvGetBrowserInfo,
-      // eslint-disable-next-line camelcase
       pv_get_origin_info: pvGetOriginInfo,
+      pv_file_open_wasm: pvFileOpenWasm,
+      pv_file_close_wasm: pvFileCloseWasm,
+      pv_file_read_wasm: pvFileReadWasm,
+      pv_file_seek_wasm: pvFileSeekWasm,
+      pv_file_tell_wasm: pvFileTellWasm,
+      pv_file_remove_wasm: pvFileRemoveWasm
     },
   };
 
-  const wasmCodeArray = base64ToUint8Array(wasm_base64);
-  const { instance } = await Asyncify.instantiate(
-    wasmCodeArray,
-    importObject
-  );
+  let instance: WebAssembly.Instance;
+  if (wasm instanceof Promise) {
+    instance = (await Asyncify.instantiateStreaming(wasm, importObject)).instance;
+  } else {
+    const wasmCodeArray = base64ToUint8Array(wasm);
+    instance = (await Asyncify.instantiate(wasmCodeArray, importObject)).instance;
+  }
 
   const aligned_alloc = instance.exports.aligned_alloc as aligned_alloc_type;
 

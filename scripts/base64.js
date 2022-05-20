@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+const { program } = require("commander");
+
+program
+.requiredOption(
+  "-i, --input_file <string>",
+  "Path to input file to transform into base64 js file"
+)
+.requiredOption(
+  "-o, --output_file <string>",
+  "Path to output file to save transformed base64 js file"
+);
+
+if (process.argv.length < 3) {
+  program.help();
+}
+
+program.parse(process.argv);
+
+const options = program.opts();
+
+const input = options["input_file"];
+const output = options["output_file"];
+const outputDir = path.dirname(output);
+
+if (!fs.existsSync(input)) {
+  console.error(`Input file '${input}' is not a valid path.`);
+  process.exit(1);
+}
+
+if (fs.statSync(input).isDirectory()) {
+  console.error(`Input file '${input}' is a directory.`);
+  process.exit(1);
+}
+
+if (!fs.existsSync(outputDir)) {
+  fs.mkdirSync(outputDir, { recursive: true });
+}
+
+console.log(`Encoding '${input}'`);
+const content = fs.readFileSync(input, { encoding: 'base64' });
+fs.writeFileSync(output, `module.exports = "${content}";`);
+console.log(`Done! Saved file to '${output}.`)
