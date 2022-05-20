@@ -15,7 +15,7 @@ module.exports = {
   ignorePatterns: ['**/*.js', 'node_modules', 'dist', 'src/plugins/*.ts'],
   overrides: [
     {
-      files: ['src/**/*.ts'],
+      files: ['src/**/*.ts', 'test/**/*.ts'],
       extends: ['plugin:@typescript-eslint/recommended'],
       rules: {
         '@typescript-eslint/no-parameter-properties': 2,

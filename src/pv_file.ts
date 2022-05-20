@@ -1,3 +1,14 @@
+/*
+  Copyright 2022 Picovoice Inc.
+
+  You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
+  file accompanying this source.
+
+  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+  an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+  specific language governing permissions and limitations under the License.
+*/
+
 import {
   PV_FILE_STORE,
   getDB
@@ -54,8 +65,13 @@ export class PvFile {
    * @param mode A string, if it contains 'r' in the string, it will open the file in readonly mode, else it
    * will open in readwrite mode.
    * @returns Promise<PvFile> An instance of PvFile.
+   * @throws Error if IndexedDB is not supported.
    */
   public static open(path: string, mode: string): Promise<PvFile> {
+    if (!self.indexedDB) {
+      throw new Error("IndexedDB is not supported");
+    }
+
     return new Promise(async(resolve, reject) => {
       const db = await getDB();
       const dbMode = mode.includes('r') ? "readonly" : "readwrite";
@@ -76,8 +92,13 @@ export class PvFile {
   /**
    * Removes a file and any related pages given the path.
    * @param path Path to file.
+   * @throws Error if IndexedDB is not supported.
    */
   public static async remove(path: string): Promise<void> {
+    if (!self.indexedDB) {
+      throw new Error("IndexedDB is not supported");
+    }
+
     return new Promise(async (resolve, reject) => {
       const file = await this.open(path, "w");
       const numPages = file._meta.numPages;
@@ -97,8 +118,13 @@ export class PvFile {
   /**
    * Checks if the following path exists.
    * @param path Path to file.
+   * @throws Error if IndexedDB is not supported.
    */
   public static async exists(path: string): Promise<boolean> {
+    if (!self.indexedDB) {
+      throw new Error("IndexedDB is not supported");
+    }
+
     try {
       const file = await this.open(path, "r");
       return file._meta !== undefined;
@@ -138,7 +164,9 @@ export class PvFile {
       }
 
       let copied = 0;
-      const totalElems = size * count;
+
+      const maxToCopy = Math.min(size * count, this._meta.size);
+      const totalElems = maxToCopy - (maxToCopy % size);
       const buffer = new Uint8Array(totalElems);
 
       const keyRange = IDBKeyRange.bound(
@@ -151,9 +179,6 @@ export class PvFile {
       req.onsuccess = () => {
         const cursor = req.result;
         if (!cursor || (this._isEOF)) {
-          return;
-        }
-        if ((this._pagePtr === (this._meta.numPages - 1)) && (size > (cursor.value.length - this._pageOffset))) {
           return;
         }
 
@@ -251,9 +276,9 @@ export class PvFile {
       newOffset = Math.min(offset, this._meta.size);
     } else if (whence === 1) {
       const currentOffset = this._pageSize * this._pagePtr + this._pageOffset;
-      newOffset = Math.min(currentOffset, this._meta.size);
+      newOffset = Math.min(currentOffset + offset, this._meta.size);
     } else if (whence === 2) {
-      newOffset = Math.max(this._meta.size - offset, 0);
+      newOffset = Math.min(this._meta.size + offset, this._meta.size);
     } else {
       throw new Error(`Invalid operation: ${whence}.`);
     }
