@@ -352,7 +352,7 @@ export async function buildWasm(
     }
   };
 
-  const pvFileSeekWasm = async function(
+  const pvFileSeekWasm = function(
     fileAddress: number,
     offset: number,
     whence: number,
@@ -371,7 +371,7 @@ export async function buildWasm(
     }
   };
 
-  const pvFileTellWasm = async function(
+  const pvFileTellWasm = function(
     fileAddress: number,
     offsetAddress: number,
   ) {

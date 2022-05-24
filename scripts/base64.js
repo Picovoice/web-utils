@@ -11,6 +11,11 @@ program
 .requiredOption(
   "-o, --output_file <string>",
   "Path to output file to save transformed base64 js file"
+)
+.option(
+  "-n, --name <string>",
+  "Custom name of base64 variable for iife",
+  "leopardParams"
 );
 
 if (process.argv.length < 3) {
@@ -24,6 +29,7 @@ const options = program.opts();
 const input = options["input_file"];
 const output = options["output_file"];
 const outputDir = path.dirname(output);
+const name = options["name"];
 
 if (!fs.existsSync(input)) {
   console.error(`Input file '${input}' is not a valid path.`);
@@ -41,5 +47,12 @@ if (!fs.existsSync(outputDir)) {
 
 console.log(`Encoding '${input}'`);
 const content = fs.readFileSync(input, { encoding: 'base64' });
-fs.writeFileSync(output, `module.exports = "${content}";`);
+fs.writeFileSync(output, `
+var ${name} = "${content}";
+
+(function() {
+  if (typeof module !== 'undefined' && typeof module.exports !== 'undefined')
+    module.exports = ${name}
+})();
+`);
 console.log(`Done! Saved file to '${output}.`)
