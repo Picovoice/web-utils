@@ -53,6 +53,6 @@ var ${name} = "${content}";
 (function() {
   if (typeof module !== 'undefined' && typeof module.exports !== 'undefined')
     module.exports = ${name}
-})();
+})(); 
 `);
-console.log(`Done! Saved file to '${output}.`)
+console.log(`Done! Saved file to '${output}'.`)
