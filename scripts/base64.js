@@ -15,7 +15,7 @@ program
 .option(
   "-n, --name <string>",
   "Custom name of base64 variable for iife",
-  "leopardParams"
+  "modelParams"
 );
 
 if (process.argv.length < 3) {
