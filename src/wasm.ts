@@ -430,7 +430,13 @@ export async function buildWasm(
 
   let instance: WebAssembly.Instance;
   if (wasm instanceof Promise) {
-    instance = (await Asyncify.instantiateStreaming(wasm, importObject)).instance;
+    if (Asyncify.instantiateStreaming) {
+      instance = (await Asyncify.instantiateStreaming(wasm, importObject)).instance;
+    } else {
+      const response = await wasm;
+      const data = await response.arrayBuffer();
+      instance = (await Asyncify.instantiate(new Uint8Array(data), importObject)).instance;
+    }
   } else {
     const wasmCodeArray = base64ToUint8Array(wasm);
     instance = (await Asyncify.instantiate(wasmCodeArray, importObject)).instance;
