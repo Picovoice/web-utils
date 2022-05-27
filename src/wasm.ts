@@ -25,7 +25,6 @@ import {
 import {PvFile} from "./pv_file";
 
 import {wasiSnapshotPreview1Emulator} from './wasi_snapshot';
-import {instantiate} from "asyncify-wasm";
 
 export type aligned_alloc_type = (alignment: number, size: number) => Promise<number>;
 export type pv_free_type = (ptr: number) => Promise<void>;
