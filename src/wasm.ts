@@ -207,9 +207,15 @@ export async function buildWasm(
         succeededAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 1;
     } catch (error) {
-      memoryBufferInt32[
-        succeededAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
+      if (navigator.userAgent.indexOf("Firefox") !== -1) {
+        memoryBufferInt32[
+          succeededAddress / Int32Array.BYTES_PER_ELEMENT
+        ] = 1;
+      } else {
+        memoryBufferInt32[
+          succeededAddress / Int32Array.BYTES_PER_ELEMENT
+        ] = 0;
+      }
     }
   };
 
