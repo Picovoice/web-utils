@@ -21,6 +21,7 @@ import {
 type PvFileMeta = {
   size: number;
   numPages: number;
+  version: number;
 }
 
 /**
@@ -54,6 +55,13 @@ export class PvFile {
     this._meta = meta;
     this._db = db;
     this._mode = mode;
+  }
+
+  /**
+   * Getter for file's meta information.
+   */
+  get meta() {
+    return this._meta;
   }
 
   /**
@@ -207,11 +215,17 @@ export class PvFile {
   /**
    * Writes an Uint8array to IndexedDB seperated by pages.
    * @param content The bytes to save.
+   * @param version Version of the file.
    */
-  public async write(content: Uint8Array): Promise<void> {
+  public async write(content: Uint8Array, version = 1): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this._mode === "readonly") {
         reject(new Error("Instance is readonly mode only."));
+        return;
+      }
+
+      if (typeof version !== "number" && version <= 0) {
+        reject(new Error("Version should be a positive number"));
         return;
       }
 
@@ -220,7 +234,8 @@ export class PvFile {
       const pages = Math.ceil(content.length / this._pageSize);
       const meta: PvFileMeta = {
         size: content.length,
-        numPages: pages
+        numPages: pages,
+        version: version
       };
 
       const addContent = () => {
