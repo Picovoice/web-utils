@@ -11,7 +11,8 @@
 
 import {
   PV_FILE_STORE,
-  getDB, base64ToUint8Array
+  base64ToUint8Array,
+  getDB
 } from "./utils";
 
 /**
