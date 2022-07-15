@@ -45,6 +45,16 @@ describe("PvFile", () => {
     }
   });
 
+  it("Write file increment version", async () => {
+    try {
+      const file = await PvFile.open(path, "w");
+      await file.write(basicData, 2);
+      expect(file.meta.version).eq(2);
+    } catch (e) {
+      expect(e).eq(undefined, e?.message);
+    }
+  });
+
   it("Seek file", async () => {
     try {
       const file = await PvFile.open(path, "r");
