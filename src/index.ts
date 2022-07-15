@@ -25,11 +25,13 @@ import {
   getDB,
   getPvStorage,
   isAccessKeyValid,
-  stringHeaderToObject,
+  stringHeaderToObject
 } from './utils';
 
 import {
-  PvFile
+  PvFile,
+  fromBase64,
+  fromPublicDirectory
 } from "./pv_file";
 
 const dbConfig = {
@@ -56,4 +58,6 @@ export {
   stringHeaderToObject,
   // PvFile
   PvFile,
+  fromBase64,
+  fromPublicDirectory
 };

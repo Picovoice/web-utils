@@ -11,7 +11,7 @@
 
 import {
   PV_FILE_STORE,
-  getDB
+  getDB, base64ToUint8Array
 } from "./utils";
 
 /**
@@ -21,7 +21,7 @@ import {
 type PvFileMeta = {
   size: number;
   numPages: number;
-  version: number;
+  version?: number;
 }
 
 /**
@@ -60,8 +60,14 @@ export class PvFile {
   /**
    * Getter for file's meta information.
    */
-  get meta() {
-    return this._meta;
+  get meta(): PvFileMeta | undefined {
+    if (this._meta === undefined) {
+      return undefined;
+    }
+    return {
+      version: 0,
+      ...this._meta
+    };
   }
 
   /**
@@ -359,5 +365,42 @@ export class PvFile {
    */
   private get _store() {
     return this._db.transaction(PV_FILE_STORE, this._mode).objectStore(PV_FILE_STORE);
+  }
+}
+
+/**
+ * PvFile helper.
+ * Write modelBase64 to modelPath depending on options forceWrite and version.
+ */
+export async function fromBase64(
+  modelPath: string,
+  modelBase64: string,
+  forceWrite: boolean,
+  version: number,
+) {
+  const pvFile = await PvFile.open(modelPath, "w");
+  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
+    await pvFile.write(base64ToUint8Array(modelBase64), version);
+  }
+}
+
+/**
+ * PvFile helper.
+ * Write publicPath's model to modelPath depending on options forceWrite and version.
+ */
+export async function fromPublicDirectory(
+  modelPath: string,
+  publicPath: string,
+  forceWrite: boolean,
+  version: number,
+) {
+  const pvFile = await PvFile.open(modelPath, "w");
+  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
+    const response = await fetch(publicPath);
+    if (!response.ok) {
+      throw new Error(`Failed to get model from '${publicPath}'`);
+    }
+    const data = await response.arrayBuffer();
+    await pvFile.write(new Uint8Array(data));
   }
 }
