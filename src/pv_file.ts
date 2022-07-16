@@ -11,6 +11,7 @@
 
 import {
   PV_FILE_STORE,
+  base64ToUint8Array,
   getDB
 } from "./utils";
 
@@ -21,6 +22,7 @@ import {
 type PvFileMeta = {
   size: number;
   numPages: number;
+  version?: number;
 }
 
 /**
@@ -54,6 +56,19 @@ export class PvFile {
     this._meta = meta;
     this._db = db;
     this._mode = mode;
+  }
+
+  /**
+   * Getter for file's meta information.
+   */
+  get meta(): PvFileMeta | undefined {
+    if (this._meta === undefined) {
+      return undefined;
+    }
+    return {
+      version: 0,
+      ...this._meta
+    };
   }
 
   /**
@@ -207,11 +222,17 @@ export class PvFile {
   /**
    * Writes an Uint8array to IndexedDB seperated by pages.
    * @param content The bytes to save.
+   * @param version Version of the file.
    */
-  public async write(content: Uint8Array): Promise<void> {
+  public async write(content: Uint8Array, version = 1): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this._mode === "readonly") {
         reject(new Error("Instance is readonly mode only."));
+        return;
+      }
+
+      if (typeof version !== "number" && version <= 0) {
+        reject(new Error("Version should be a positive number"));
         return;
       }
 
@@ -220,7 +241,8 @@ export class PvFile {
       const pages = Math.ceil(content.length / this._pageSize);
       const meta: PvFileMeta = {
         size: content.length,
-        numPages: pages
+        numPages: pages,
+        version: version
       };
 
       const addContent = () => {
@@ -344,5 +366,42 @@ export class PvFile {
    */
   private get _store() {
     return this._db.transaction(PV_FILE_STORE, this._mode).objectStore(PV_FILE_STORE);
+  }
+}
+
+/**
+ * PvFile helper.
+ * Write modelBase64 to modelPath depending on options forceWrite and version.
+ */
+export async function fromBase64(
+  modelPath: string,
+  modelBase64: string,
+  forceWrite: boolean,
+  version: number,
+) {
+  const pvFile = await PvFile.open(modelPath, "w");
+  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
+    await pvFile.write(base64ToUint8Array(modelBase64), version);
+  }
+}
+
+/**
+ * PvFile helper.
+ * Write publicPath's model to modelPath depending on options forceWrite and version.
+ */
+export async function fromPublicDirectory(
+  modelPath: string,
+  publicPath: string,
+  forceWrite: boolean,
+  version: number,
+) {
+  const pvFile = await PvFile.open(modelPath, "w");
+  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
+    const response = await fetch(publicPath);
+    if (!response.ok) {
+      throw new Error(`Failed to get model from '${publicPath}'`);
+    }
+    const data = await response.arrayBuffer();
+    await pvFile.write(new Uint8Array(data));
   }
 }
