@@ -144,7 +144,7 @@ export async function fromBase64(
   forceWrite: boolean,
   version: number,
 ) {
-  const pvFile = await PvFileIDB.open(modelPath, "w");
+  const pvFile = await open(modelPath, "w");
   if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
     await pvFile.write(base64ToUint8Array(modelBase64), version);
   }
@@ -160,7 +160,7 @@ export async function fromPublicDirectory(
   forceWrite: boolean,
   version: number,
 ) {
-  const pvFile = await PvFileIDB.open(modelPath, "w");
+  const pvFile = await open(modelPath, "w");
   if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
     const response = await fetch(publicPath);
     if (!response.ok) {
