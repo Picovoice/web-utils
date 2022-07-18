@@ -16,7 +16,7 @@ import { PvFile, PvFileMeta } from "./pv_file";
  * This class mocks the file system using in-memory storage.
  */
 export class PvFileMem extends PvFile {
-  private static _fileMap = new Map<string, Uint8Array>();
+  private _file: Uint8Array = undefined;
   private _pos = 0;
 
   protected constructor(path: string, meta?: PvFileMeta, db?: IDBDatabase, mode?: IDBTransactionMode) {
@@ -34,44 +34,46 @@ export class PvFileMem extends PvFile {
   }
 
   public read(size: number, count: number): Uint8Array {
+    if (this._file === undefined) {
+      throw new Error(`'${this._path}' doesn't exist.`);
+    }
     if (this._isEOF) {
       const err = new Error(`EOF`);
       err.name = "EndOfFile";
       throw err;
     }
 
-    const file = PvFileMem._fileMap.get(this._path);
-
-    const toCopy = Math.min(size * count, file.length - this._pos);
+    const toCopy = Math.min(size * count, this._file.length - this._pos);
     const totalElems = toCopy - (toCopy % size);
     const buffer = new Uint8Array(totalElems);
 
-    buffer.set(file.slice(this._pos, this._pos + totalElems), 0);
+    buffer.set(this._file.slice(this._pos, this._pos + totalElems), 0);
     this._pos += totalElems;
 
     return buffer;
   }
 
   public write(content: Uint8Array, version: number = 1): void {
-    PvFileMem._fileMap.set(this._path, content);
+    this._file = content;
   }
 
   public seek(offset: number, whence: number): void {
+    if (this._file === undefined) {
+      throw new Error(`'${this._path}' doesn't exist.`);
+    }
     if (offset < 0) {
       const err = new Error(`EOF`);
       err.name = "EndOfFile";
       throw err;
     }
 
-    const file = PvFileMem._fileMap.get(this._path);
-
     let newOffset;
     if (whence === 0) {
-      newOffset = Math.min(offset, file.length);
+      newOffset = Math.min(offset, this._file.length);
     } else if (whence === 1) {
-      newOffset = Math.min(this._pos + offset, file.length);
+      newOffset = Math.min(this._pos + offset, this._file.length);
     } else if (whence === 2) {
-      newOffset = Math.min(file.length + offset, file.length);
+      newOffset = Math.min(this._file.length + offset, this._file.length);
     } else {
       throw new Error(`Invalid operation: ${whence}.`);
     }
@@ -84,18 +86,14 @@ export class PvFileMem extends PvFile {
   }
 
   public async remove(): Promise<void> {
-    if (PvFileMem._fileMap.has(this._path)) {
-      PvFileMem._fileMap.delete(this._path);
-      this._meta = undefined;
-    }
+    this._file = undefined;
   }
 
   public exists(): boolean {
-    return PvFileMem._fileMap.has(this._path);
+    return this._file !== undefined;
   }
 
   protected get _isEOF() {
-    const file = PvFileMem._fileMap.get(this._path);
-    return this._pos >= file.length;
+    return this._pos >= this._file.length;
   }
 }
