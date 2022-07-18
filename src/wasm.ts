@@ -14,17 +14,16 @@
 import * as Asyncify from 'asyncify-wasm';
 
 import {
-  arrayBufferToBase64AtIndex,
   arrayBufferToStringAtIndex,
   base64ToUint8Array,
   fetchWithTimeout,
-  getPvStorage,
   stringHeaderToObject,
+  open
 } from './utils';
 
-import {PvFile} from "./pv_file";
+import { PvFile } from "./pv_file";
 
-import {wasiSnapshotPreview1Emulator} from './wasi_snapshot';
+import { wasiSnapshotPreview1Emulator } from './wasi_snapshot';
 
 export type aligned_alloc_type = (alignment: number, size: number) => Promise<number>;
 export type pv_free_type = (ptr: number) => Promise<void>;
@@ -42,8 +41,6 @@ export async function buildWasm(
 ): Promise<any> {
   const memoryBufferUint8 = new Uint8Array(memory.buffer);
   const memoryBufferInt32 = new Int32Array(memory.buffer);
-
-  const storage = getPvStorage();
 
   const pvConsoleLogWasm = function (index: number): void {
     // eslint-disable-next-line no-console
@@ -152,110 +149,6 @@ export async function buildWasm(
     ] = statusCode;
   };
 
-  const pvFileLoadWasm = async function (
-    pathAddress: number,
-    numContentBytesAddress: number,
-    contentAddressAddress: number,
-    succeededAddress: number
-  ): Promise<void> {
-    const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
-    try {
-      const contentBase64 = await storage.getItem(path);
-      const contentBuffer = base64ToUint8Array(contentBase64);
-      // eslint-disable-next-line
-      const contentAddress = await aligned_alloc(
-        Uint8Array.BYTES_PER_ELEMENT,
-        contentBuffer.length * Uint8Array.BYTES_PER_ELEMENT
-      );
-
-      if (contentAddress === 0) {
-        throw new Error('malloc failed: Cannot allocate memory');
-      }
-
-      memoryBufferInt32[
-        numContentBytesAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = contentBuffer.byteLength;
-      memoryBufferInt32[
-        contentAddressAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = contentAddress;
-      memoryBufferUint8.set(contentBuffer, contentAddress);
-      memoryBufferInt32[
-        succeededAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 1;
-    } catch (error) {
-      memoryBufferInt32[
-        succeededAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
-    }
-  };
-
-  const pvFileSaveWasm = async function (
-    pathAddress: number,
-    numContentBytes: number,
-    contentAddress: number,
-    succeededAddress: number
-  ): Promise<void> {
-    const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
-    const content = arrayBufferToBase64AtIndex(
-      memoryBufferUint8,
-      numContentBytes,
-      contentAddress
-    );
-    try {
-      await storage.setItem(path, content);
-      memoryBufferInt32[
-        succeededAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 1;
-    } catch (error) {
-      if (navigator.userAgent.indexOf("Firefox") !== -1) {
-        memoryBufferInt32[
-          succeededAddress / Int32Array.BYTES_PER_ELEMENT
-        ] = 1;
-      } else {
-        memoryBufferInt32[
-          succeededAddress / Int32Array.BYTES_PER_ELEMENT
-        ] = 0;
-      }
-    }
-  };
-
-  const pvFileExistsWasm = async function (
-    pathAddress: number,
-    isExistsAddress: number,
-    succeededAddress: number
-  ): Promise<void> {
-    const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
-
-    try {
-      const isExists = await storage.exists(path);
-      memoryBufferUint8[isExistsAddress] = (isExists) ? 1 : 0;
-      memoryBufferInt32[
-        succeededAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 1;
-    } catch (error) {
-      memoryBufferInt32[
-        succeededAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
-    }
-  };
-
-  const pvFileDeleteWasm = async function (
-    pathAddress: number,
-    succeededAddress: number
-  ): Promise<void> {
-    const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
-    try {
-      await storage.removeItem(path);
-      memoryBufferInt32[
-        succeededAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 1;
-    } catch (error) {
-      memoryBufferInt32[
-        succeededAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
-    }
-  };
-
   const pvGetBrowserInfo = async function (browserInfoAddressAddress: number): Promise<void> {
     const userAgent =
       navigator.userAgent !== undefined ? navigator.userAgent : 'unknown';
@@ -308,7 +201,7 @@ export async function buildWasm(
     const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
     const mode = arrayBufferToStringAtIndex(memoryBufferUint8, modeAddress);
     try {
-      const file = await PvFile.open(path, mode);
+      const file = await open(path, mode);
       PvFile.setPtr(fileAddress, file);
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
@@ -399,7 +292,8 @@ export async function buildWasm(
   ) {
     const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
     try {
-      await PvFile.remove(path);
+      const file = await open(path, "w");
+      await file.remove();
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
@@ -419,10 +313,6 @@ export async function buildWasm(
       pv_assert_wasm: pvAssertWasm,
       pv_time_wasm: pvTimeWasm,
       pv_https_request_wasm: pvHttpsRequestWasm,
-      pv_file_load_wasm: pvFileLoadWasm,
-      pv_file_save_wasm: pvFileSaveWasm,
-      pv_file_exists_wasm: pvFileExistsWasm,
-      pv_file_delete_wasm: pvFileDeleteWasm,
       pv_get_browser_info: pvGetBrowserInfo,
       pv_get_origin_info: pvGetOriginInfo,
       pv_file_open_wasm: pvFileOpenWasm,

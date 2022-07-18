@@ -9,109 +9,9 @@
   specific language governing permissions and limitations under the License.
 */
 
-/**
- * Indexed DB configurations
- */
-export const DB_NAME = 'pv_db';
-export const STORE_NAME = 'pv_store';
-export const PV_FILE_STORE = 'pv_file';
-export const DB_VERSION = 2;
-
-/**
- * Storage Interface.
- */
-interface PvStorage {
- setItem: (key: string, value: any) => void | Promise<void>;
- getItem: (key: string) => any | Promise<any>;
- removeItem: (key: string) => void | Promise<void>;
- exists: (key: string) => boolean | Promise<boolean>;
-}
-
-/**
- * Opens indexedDB connection, handles version changes and gets the db instance.
- *
- * @returns The instance of indexedDB connection.
- */
-export function getDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = self.indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => {
-      reject(request.error);
-    };
-    request.onsuccess = () => {
-      resolve(request.result);
-    };
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-        request.result.createObjectStore(STORE_NAME);
-      }
-      if (!request.result.objectStoreNames.contains(PV_FILE_STORE)) {
-        request.result.createObjectStore(PV_FILE_STORE);
-      }
-    };
-  });
-}
-
-export const requestHelper = (request: IDBRequest): Promise<any> => new Promise((resolve, reject) => {
-  request.onerror = () => {
-    reject(request.error);
-  };
-  request.onsuccess = () => {
-    resolve(request.result);
-  };
-});
-
-/**
- * Gets the storage to use. Either tries to use IndexedDB or localStorage.
- * @param requireDB Flag indication if IndexedDB is required.
- *
- * @returns PvStorage instance to use as storage.
- */
-export function getPvStorage(requireDB = false): PvStorage {
-  if (self.indexedDB) {
-    return {
-      setItem: async (key: string, value: any) => {
-        const db = await getDB();
-        const request = db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(value, key);
-        await requestHelper(request);
-        db.close();
-      },
-      getItem: async (key: string) => {
-        const db = await getDB();
-        const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(key);
-        const res = await requestHelper(request);
-        db.close();
-        return res;
-      },
-      removeItem: async (key: string) => {
-        const db = await getDB();
-        const request = db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).delete(key);
-        await requestHelper(request);
-        db.close();
-      },
-      exists: async (key: string) => {
-        const db = await getDB();
-        const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).count(key);
-        const res = await requestHelper(request);
-        db.close();
-        return res > 0;
-      }
-    };
-  } else if (requireDB) {
-    throw new Error("IndexedDB is required but not available.");
-  } else if (self.localStorage) {
-    const { setItem, getItem, removeItem } = self.localStorage;
-    const exists = (key: string) => getItem(key) !== null;
-    return {
-      setItem,
-      getItem,
-      removeItem,
-      exists
-    };
-  }
-
-  throw new Error("Cannot get a persistent storage object.");
-}
+import { PvFile } from "./pv_file";
+import { PvFileIDB } from "./pv_file_idb";
+import { PvFileMem } from "./pv_file_mem";
 
 /**
  * Convert a null terminated phrase stored inside an array buffer to a string
@@ -217,5 +117,56 @@ export function isAccessKeyValid(accessKey: string): boolean {
     return btoa(atob(accessKeyCleaned)) === accessKeyCleaned;
   } catch (err) {
     return false;
+  }
+}
+
+/**
+ * Opens the file given the path and mode.
+ * @returns PvFile instance.
+ */
+export async function open(path: string, mode: string): Promise<PvFile> {
+  try {
+    return await PvFileIDB.open(path, mode);
+  } catch {
+    // eslint-disable-next-line no-console
+    console.warn("IndexedDB is not supported. Fallback to in-memory storage.");
+    return PvFileMem.open(path, mode);
+  }
+}
+
+/**
+ * PvFile helper.
+ * Write modelBase64 to modelPath depending on options forceWrite and version.
+ */
+export async function fromBase64(
+  modelPath: string,
+  modelBase64: string,
+  forceWrite: boolean,
+  version: number,
+) {
+  const pvFile = await open(modelPath, "w");
+  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
+    await pvFile.write(base64ToUint8Array(modelBase64), version);
+  }
+}
+
+/**
+ * PvFile helper.
+ * Write publicPath's model to modelPath depending on options forceWrite and version.
+ */
+export async function fromPublicDirectory(
+  modelPath: string,
+  publicPath: string,
+  forceWrite: boolean,
+  version: number,
+) {
+  const pvFile = await open(modelPath, "w");
+  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
+    const response = await fetch(publicPath);
+    if (!response.ok) {
+      throw new Error(`Failed to get model from '${publicPath}'`);
+    }
+    const data = await response.arrayBuffer();
+    await pvFile.write(new Uint8Array(data));
   }
 }
