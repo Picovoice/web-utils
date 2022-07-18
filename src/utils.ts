@@ -9,6 +9,8 @@
   specific language governing permissions and limitations under the License.
 */
 
+import { PvFile } from "./pv_file";
+
 /**
  * Convert a null terminated phrase stored inside an array buffer to a string
  *
@@ -113,5 +115,42 @@ export function isAccessKeyValid(accessKey: string): boolean {
     return btoa(atob(accessKeyCleaned)) === accessKeyCleaned;
   } catch (err) {
     return false;
+  }
+}
+
+/**
+ * PvFile helper.
+ * Write modelBase64 to modelPath depending on options forceWrite and version.
+ */
+export async function fromBase64(
+  modelPath: string,
+  modelBase64: string,
+  forceWrite: boolean,
+  version: number,
+) {
+  const pvFile = await PvFile.open(modelPath, "w");
+  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
+    await pvFile.write(base64ToUint8Array(modelBase64), version);
+  }
+}
+
+/**
+ * PvFile helper.
+ * Write publicPath's model to modelPath depending on options forceWrite and version.
+ */
+export async function fromPublicDirectory(
+  modelPath: string,
+  publicPath: string,
+  forceWrite: boolean,
+  version: number,
+) {
+  const pvFile = await PvFile.open(modelPath, "w");
+  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
+    const response = await fetch(publicPath);
+    if (!response.ok) {
+      throw new Error(`Failed to get model from '${publicPath}'`);
+    }
+    const data = await response.arrayBuffer();
+    await pvFile.write(new Uint8Array(data));
   }
 }

@@ -9,8 +9,6 @@
   specific language governing permissions and limitations under the License.
 */
 
-import { base64ToUint8Array } from "./utils";
-
 /**
  * Indexed DB configurations
  */
@@ -28,7 +26,7 @@ type PvFileMeta = {
   version?: number;
 }
 
-function getDB(): Promise<IDBDatabase> {
+export function getDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = self.indexedDB.open(DB_NAME, DB_VERSION);
     request.onerror = () => {
@@ -386,42 +384,5 @@ export class PvFile {
    */
   private get _store() {
     return this._db.transaction(PV_FILE_STORE, this._mode).objectStore(PV_FILE_STORE);
-  }
-}
-
-/**
- * PvFile helper.
- * Write modelBase64 to modelPath depending on options forceWrite and version.
- */
-export async function fromBase64(
-  modelPath: string,
-  modelBase64: string,
-  forceWrite: boolean,
-  version: number,
-) {
-  const pvFile = await PvFile.open(modelPath, "w");
-  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
-    await pvFile.write(base64ToUint8Array(modelBase64), version);
-  }
-}
-
-/**
- * PvFile helper.
- * Write publicPath's model to modelPath depending on options forceWrite and version.
- */
-export async function fromPublicDirectory(
-  modelPath: string,
-  publicPath: string,
-  forceWrite: boolean,
-  version: number,
-) {
-  const pvFile = await PvFile.open(modelPath, "w");
-  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
-    const response = await fetch(publicPath);
-    if (!response.ok) {
-      throw new Error(`Failed to get model from '${publicPath}'`);
-    }
-    const data = await response.arrayBuffer();
-    await pvFile.write(new Uint8Array(data));
   }
 }
