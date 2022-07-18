@@ -10,6 +10,8 @@
 */
 
 import { PvFile } from "./pv_file";
+import { PvFileIDB } from "./pv_file_idb";
+import { PvFileMem } from "./pv_file_mem";
 
 /**
  * Convert a null terminated phrase stored inside an array buffer to a string
@@ -119,6 +121,20 @@ export function isAccessKeyValid(accessKey: string): boolean {
 }
 
 /**
+ * Opens the file given the path and mode.
+ * @returns PvFile instance.
+ */
+export async function open(path: string, mode: string): Promise<PvFile> {
+  try {
+    return await PvFileIDB.open(path, mode);
+  } catch {
+    // eslint-disable-next-line no-console
+    console.warn("IndexedDB is not supported. Fallback to in-memory storage.");
+    return PvFileMem.open(path, mode);
+  }
+}
+
+/**
  * PvFile helper.
  * Write modelBase64 to modelPath depending on options forceWrite and version.
  */
@@ -128,7 +144,7 @@ export async function fromBase64(
   forceWrite: boolean,
   version: number,
 ) {
-  const pvFile = await PvFile.open(modelPath, "w");
+  const pvFile = await PvFileIDB.open(modelPath, "w");
   if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
     await pvFile.write(base64ToUint8Array(modelBase64), version);
   }
@@ -144,7 +160,7 @@ export async function fromPublicDirectory(
   forceWrite: boolean,
   version: number,
 ) {
-  const pvFile = await PvFile.open(modelPath, "w");
+  const pvFile = await PvFileIDB.open(modelPath, "w");
   if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
     const response = await fetch(publicPath);
     if (!response.ok) {

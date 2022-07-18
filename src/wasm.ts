@@ -18,6 +18,7 @@ import {
   base64ToUint8Array,
   fetchWithTimeout,
   stringHeaderToObject,
+  open
 } from './utils';
 
 import { PvFile } from "./pv_file";
@@ -200,7 +201,7 @@ export async function buildWasm(
     const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
     const mode = arrayBufferToStringAtIndex(memoryBufferUint8, modeAddress);
     try {
-      const file = await PvFile.open(path, mode);
+      const file = await open(path, mode);
       PvFile.setPtr(fileAddress, file);
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
@@ -291,7 +292,8 @@ export async function buildWasm(
   ) {
     const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
     try {
-      await PvFile.remove(path);
+      const file = await open(path, "w");
+      await file.remove();
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;

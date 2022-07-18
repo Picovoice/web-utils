@@ -22,15 +22,24 @@ import {
   fromPublicDirectory,
   isAccessKeyValid,
   stringHeaderToObject,
+  open,
 } from './utils';
 
 import {
-  PvFile,
+  PvFile
+} from "./pv_file";
+
+import {
+  PvFileMem
+} from "./pv_file_mem";
+
+import {
+  PvFileIDB,
   getDB,
   DB_NAME,
   DB_VERSION,
   PV_FILE_STORE
-} from "./pv_file";
+} from "./pv_file_idb";
 
 const dbConfig = {
   DB_NAME,
@@ -53,7 +62,10 @@ export {
   fromBase64,
   fromPublicDirectory,
   // PvFile
+  open,
   dbConfig,
-  PvFile,
   getDB,
+  PvFile,
+  PvFileIDB,
+  PvFileMem
 };

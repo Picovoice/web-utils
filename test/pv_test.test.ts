@@ -11,7 +11,7 @@
 
 /// <reference types="cypress" />
 
-import { PvFile } from "../src";
+import { open } from "../src";
 
 const buildData = (size: number) => {
   const data = new Uint8Array(size);
@@ -27,7 +27,7 @@ const basicData = buildData(1024);
 describe("PvFile", () => {
   it("Write file", async () => {
     try {
-      const file = await PvFile.open(path, "w");
+      const file = await open(path, "w");
       await file.write(basicData);
     } catch (e) {
       expect(e).eq(undefined, e?.message);
@@ -36,10 +36,9 @@ describe("PvFile", () => {
 
   it("Exists file", async () => {
     try {
-      let exists = await PvFile.exists(path);
+      const file = await open(path, "r");
+      const exists = file.exists();
       expect(exists).eq(true);
-      exists = await PvFile.exists("random");
-      expect(exists).eq(false);
     } catch (e) {
       expect(e).eq(undefined, e?.message);
     }
@@ -47,7 +46,7 @@ describe("PvFile", () => {
 
   it("Write file increment version", async () => {
     try {
-      const file = await PvFile.open(path, "w");
+      const file = await open(path, "w");
       await file.write(basicData, 2);
       expect(file.meta.version).eq(2);
     } catch (e) {
@@ -57,7 +56,7 @@ describe("PvFile", () => {
 
   it("Seek file", async () => {
     try {
-      const file = await PvFile.open(path, "r");
+      const file = await open(path, "r");
       file.seek(512, 0);
       const data = await file.read(1, 512);
       expect(data).length(512);
@@ -68,7 +67,7 @@ describe("PvFile", () => {
 
   it("Tell file", async () => {
     try {
-      const file = await PvFile.open(path, "r");
+      const file = await open(path, "r");
       file.seek(0, 2);
       const offset = file.tell();
       expect(offset).eq(1024);
@@ -79,7 +78,7 @@ describe("PvFile", () => {
 
   it("Read file", async () => {
     try {
-      const file = await PvFile.open(path, "r");
+      const file = await open(path, "r");
       const data = await file.read(1, 1024);
       expect(data).length(1024);
       expect(data).to.deep.eq(basicData);
@@ -90,7 +89,7 @@ describe("PvFile", () => {
 
   it("Read file different element size", async () => {
     try {
-      const file = await PvFile.open(path, "r");
+      const file = await open(path, "r");
       const data = await file.read(3, 999);
       expect(data).length(1023);
       expect(data).to.deep.eq(basicData.slice(0, 1024 - (1024 % 3)));
@@ -101,8 +100,9 @@ describe("PvFile", () => {
 
   it("Remove file", async () => {
     try {
-      await PvFile.remove(path);
-      const exists = await PvFile.exists(path);
+      const file = await open(path, "w");
+      await file.remove();
+      const exists = file.exists();
       expect(exists).eq(false);
     } catch (e) {
       expect(e).eq(undefined, e?.message);
@@ -112,7 +112,7 @@ describe("PvFile", () => {
   it("Big file operation", async () => {
     try {
       const fileSize = 12345678;
-      const file = await PvFile.open(path, "w");
+      const file = await open(path, "w");
       await file.write(buildData(fileSize));
 
       const fullData = await file.read(1, fileSize);
