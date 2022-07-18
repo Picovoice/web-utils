@@ -9,11 +9,14 @@
   specific language governing permissions and limitations under the License.
 */
 
-import {
-  PV_FILE_STORE,
-  base64ToUint8Array,
-  getDB
-} from "./utils";
+import { base64ToUint8Array } from "./utils";
+
+/**
+ * Indexed DB configurations
+ */
+export const DB_NAME = 'pv_db';
+export const PV_FILE_STORE = 'pv_file';
+export const DB_VERSION = 3;
 
 /**
  * PvFileMeta type.
@@ -23,6 +26,23 @@ type PvFileMeta = {
   size: number;
   numPages: number;
   version?: number;
+}
+
+function getDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = self.indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = () => {
+      reject(request.error);
+    };
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(PV_FILE_STORE)) {
+        request.result.createObjectStore(PV_FILE_STORE);
+      }
+    };
+  });
 }
 
 /**

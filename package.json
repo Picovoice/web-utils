@@ -1,6 +1,6 @@
 {
   "name": "@picovoice/web-utils",
-  "version": "1.1.7",
+  "version": "1.2.0",
   "description": "Picovoice web utility functions",
   "author": "Picovoice",
   "license": "Apache-2.0",
