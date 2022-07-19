@@ -167,6 +167,6 @@ export async function fromPublicDirectory(
       throw new Error(`Failed to get model from '${publicPath}'`);
     }
     const data = await response.arrayBuffer();
-    await pvFile.write(new Uint8Array(data));
+    await pvFile.write(new Uint8Array(data), version);
   }
 }
