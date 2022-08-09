@@ -251,6 +251,28 @@ export async function buildWasm(
     }
   };
 
+  const pvFileWriteWasm = async function(
+    fileAddress: number,
+    contentAddress: number,
+    size: number,
+    count: number,
+    numWriteAddress: number,
+  ) {
+    try {
+      const file = await PvFile.getPtr(fileAddress);
+      const content = new Uint8Array(size * count);
+      content.set(memoryBufferUint8.slice(contentAddress, contentAddress + (size * count)), 0);
+      await file.write(content);
+      memoryBufferInt32[
+        numWriteAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = (content.length / size);
+    } catch (e) {
+      memoryBufferInt32[
+        numWriteAddress / Int32Array.BYTES_PER_ELEMENT
+      ] = 1;
+    }
+  };
+
   const pvFileSeekWasm = function(
     fileAddress: number,
     offset: number,
@@ -318,6 +340,7 @@ export async function buildWasm(
       pv_file_open_wasm: pvFileOpenWasm,
       pv_file_close_wasm: pvFileCloseWasm,
       pv_file_read_wasm: pvFileReadWasm,
+      pv_file_write_wasm: pvFileWriteWasm,
       pv_file_seek_wasm: pvFileSeekWasm,
       pv_file_tell_wasm: pvFileTellWasm,
       pv_file_remove_wasm: pvFileRemoveWasm

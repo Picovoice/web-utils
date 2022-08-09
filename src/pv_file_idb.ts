@@ -59,7 +59,7 @@ export class PvFileIDB extends PvFile {
    * @param db The db instance currently related to the opened file.
    * @param mode The mode - either readonly or readwrite.
    */
-  protected constructor(path: string, meta: PvFileMeta | undefined, db: IDBDatabase, mode: IDBTransactionMode) {
+  protected constructor(path: string, meta: PvFileMeta, db: IDBDatabase, mode: IDBTransactionMode) {
     super();
     this._path = path;
     this._meta = meta;
@@ -80,23 +80,40 @@ export class PvFileIDB extends PvFile {
    */
   public static open(path: string, mode: string): Promise<PvFileIDB> {
     if (!self.indexedDB) {
-      throw new Error("IndexedDB is not supported");
+      const error = new Error("IndexedDB is not supported");
+      error.name = "IndexedDBNotSupported";
+      throw error;
     }
 
     return new Promise(async(resolve, reject) => {
-      const db = await getDB();
-      const dbMode = mode.includes('r') ? "readonly" : "readwrite";
-      const req = db.transaction(PV_FILE_STORE, dbMode).objectStore(PV_FILE_STORE).get(path);
-      req.onerror = () => {
-        reject(req.error);
-      };
-      req.onsuccess = () => {
-        if (req.result === undefined && dbMode === "readonly") {
-          reject(`Instance is readonly mode but '${path}' doesn't exist.`);
+      try {
+        const db = await getDB();
+        const dbMode = mode.includes('r') ? "readonly" : "readwrite";
+        const req = db.transaction(PV_FILE_STORE, dbMode).objectStore(PV_FILE_STORE).get(path);
+        req.onerror = () => {
+          reject(req.error);
+        };
+        req.onsuccess = () => {
+          const meta = req.result;
+          if (meta === undefined && dbMode === "readonly") {
+            reject(new Error(`'${path}' doesn't exist.`));
+            return;
+          }
+          const fileIDB = new PvFileIDB(path, meta, db, dbMode);
+          if (mode.includes('a')) {
+            fileIDB.seek(0, 2);
+          }
+          resolve(fileIDB);
+        };
+      } catch (e) {
+        if (e.name === "InvalidStateError") {
+          const error = new Error("IndexedDB is not supported");
+          error.name = "IndexedDBNotSupported";
+          reject(error);
         } else {
-          resolve(new PvFileIDB(path, req.result, db, dbMode));
+          reject(e);
         }
-      };
+      }
     });
   }
 
@@ -119,7 +136,7 @@ export class PvFileIDB extends PvFile {
    */
   public async read(size: number, count: number): Promise<Uint8Array> {
     return new Promise((resolve, reject) => {
-      if (this._meta === undefined) {
+      if (!this.exists()) {
         reject(new Error(`'${this._path}' doesn't exist.`));
         return;
       }
@@ -177,7 +194,7 @@ export class PvFileIDB extends PvFile {
    * @param version Version of the file.
    */
   public async write(content: Uint8Array, version = 1): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (this._mode === "readonly") {
         reject(new Error("Instance is readonly mode only."));
         return;
@@ -187,39 +204,53 @@ export class PvFileIDB extends PvFile {
         reject(new Error("Version should be a positive number"));
         return;
       }
-
       const store = this._store;
 
-      const pages = Math.ceil(content.length / this._pageSize);
-      const meta = {
-        size: content.length,
-        numPages: pages,
+      const getCurrentPage = () => new Promise<Uint8Array>(res => {
+        const req = store.get(`${this._path}-${PvFileIDB.createPage(this._pagePtr)}`);
+        req.onsuccess = () => {
+          if (req.result !== undefined) {
+            res(req.result.slice(0, this._pageOffset));
+          } else {
+            res(new Uint8Array(0));
+          }
+        };
+      });
+
+      const last = await getCurrentPage();
+      const newContent = new Uint8Array(last.length + content.length);
+      newContent.set(last);
+      newContent.set(content, last.length);
+
+      const newSize = (this._pagePtr * this._pageSize) + newContent.length;
+      const newMeta: PvFileMeta = {
+        size: newSize,
+        numPages: Math.ceil(newSize / this._pageSize),
         version: version
       };
+      store.put(newMeta, this._path);
 
-      const addContent = () => {
-        store.add(meta, this._path);
-        for (let i = 0; i < pages; i++) {
-          store.add(
-            content.slice(i * this._pageSize, (i + 1) * this._pageSize),
-            `${this._path}-${PvFileIDB.createPage(i)}`
-          );
-        }
-      };
+      const pages = Math.ceil(newContent.length / this._pageSize);
+      for (let i = 0; i < pages; i++) {
+        store.put(
+          newContent.slice(i * this._pageSize, (i + 1) * this._pageSize),
+          `${this._path}-${PvFileIDB.createPage(this._pagePtr + i)}`);
+      }
 
-      if (this._meta) {
-        const numPages = this._meta.numPages;
-        const keyRange = IDBKeyRange.bound(this._path, `${this._path}-${PvFileIDB.createPage(numPages)}`);
-        store.delete(keyRange).onsuccess = () => addContent();
-      } else {
-        addContent();
+      if ((this.exists()) && (newMeta.numPages < this._meta.numPages)) {
+        const keyRange = IDBKeyRange.bound(
+          `${this._path}-${PvFileIDB.createPage(newMeta.numPages)}`,
+          `${this._path}-${PvFileIDB.createPage(this._meta.numPages)}`,
+          true);
+        store.delete(keyRange);
       }
 
       store.transaction.onerror = () => {
         reject(store.transaction.error);
       };
       store.transaction.oncomplete = () => {
-        this._meta = meta;
+        this._meta = newMeta;
+        this.seek(0, 2);
         resolve();
       };
     });
@@ -235,7 +266,7 @@ export class PvFileIDB extends PvFile {
    * @throws Error if file doesn't exist or if EOF.
    */
   public seek(offset: number, whence: number): void {
-    if (this._meta === undefined) {
+    if (!this.exists() && this._mode === "readonly") {
       throw new Error(`'${this._path}' doesn't exist.`);
     }
 
@@ -265,6 +296,9 @@ export class PvFileIDB extends PvFile {
    * Returns the number of bytes from the beginning of the file.
    */
   public tell(): number {
+    if (!this.exists()) {
+      return -1;
+    }
     return this._pagePtr * this._pageSize + this._pageOffset;
   }
 
@@ -283,6 +317,8 @@ export class PvFileIDB extends PvFile {
       };
       req.onsuccess = () => {
         this._meta = undefined;
+        this._pageOffset = 0;
+        this._pagePtr = 0;
         resolve();
       };
     });
@@ -292,11 +328,7 @@ export class PvFileIDB extends PvFile {
    * Checks if the following path exists.
    */
   public exists(): boolean {
-    try {
-      return this._meta !== undefined;
-    } catch (e) {
-      return false;
-    }
+    return this._meta !== undefined;
   }
 
   /**
