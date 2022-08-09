@@ -127,10 +127,13 @@ export function isAccessKeyValid(accessKey: string): boolean {
 export async function open(path: string, mode: string): Promise<PvFile> {
   try {
     return await PvFileIDB.open(path, mode);
-  } catch {
-    // eslint-disable-next-line no-console
-    console.warn("IndexedDB is not supported. Fallback to in-memory storage.");
-    return PvFileMem.open(path, mode);
+  } catch (e) {
+    if (e.name === "IndexedDBNotSupported") {
+      // eslint-disable-next-line no-console
+      console.warn("IndexedDB is not supported. Fallback to in-memory storage.");
+      return PvFileMem.open(path, mode);
+    }
+    throw e;
   }
 }
 

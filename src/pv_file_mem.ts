@@ -16,7 +16,8 @@ import { PvFile, PvFileMeta } from "./pv_file";
  * This class mocks the file system using in-memory storage.
  */
 export class PvFileMem extends PvFile {
-  private _file: Uint8Array = undefined;
+  private static _memFiles = new Map<string, Uint8Array>();
+
   private _pos = 0;
 
   protected constructor(path: string, meta?: PvFileMeta, db?: IDBDatabase, mode?: IDBTransactionMode) {
@@ -25,8 +26,17 @@ export class PvFileMem extends PvFile {
     this._meta = meta;
   }
 
-  public static open(path: string, mode?: string): PvFileMem {
-    return new PvFileMem(path, undefined, undefined, mode.includes('r') ? "readonly" : "readwrite");
+  public static open(path: string, mode: string): PvFileMem {
+    const file = PvFileMem._memFiles.get(path);
+    const dbMode = mode.includes('r') ? "readonly" : "readwrite";
+    if ((file === undefined) && (dbMode === "readonly")) {
+      throw new Error(`'${path}' doesn't exist.`);
+    }
+    const fileMem = new PvFileMem(path, undefined, undefined, dbMode);
+    if (mode.includes('a')) {
+      fileMem.seek(0, 2);
+    }
+    return fileMem;
   }
 
   public close() {
@@ -34,7 +44,7 @@ export class PvFileMem extends PvFile {
   }
 
   public read(size: number, count: number): Uint8Array {
-    if (this._file === undefined) {
+    if (!this.exists()) {
       throw new Error(`'${this._path}' doesn't exist.`);
     }
     if (this._isEOF) {
@@ -54,11 +64,16 @@ export class PvFileMem extends PvFile {
   }
 
   public write(content: Uint8Array, version: number = 1): void {
-    this._file = content;
+    const newFile = new Uint8Array(this._pos + content.length);
+    newFile.set(this._file.slice(0, this._pos));
+    newFile.set(content, this._pos);
+    delete this._file;
+    this._file = newFile;
+    this._pos += content.length;
   }
 
   public seek(offset: number, whence: number): void {
-    if (this._file === undefined) {
+    if (!this.exists()) {
       throw new Error(`'${this._path}' doesn't exist.`);
     }
     if (offset < 0) {
@@ -82,10 +97,14 @@ export class PvFileMem extends PvFile {
   }
 
   public tell(): number {
+    if (!this.exists()) {
+      return -1;
+    }
     return this._pos;
   }
 
   public async remove(): Promise<void> {
+    delete this._file;
     this._file = undefined;
   }
 
@@ -95,5 +114,13 @@ export class PvFileMem extends PvFile {
 
   protected get _isEOF() {
     return this._pos >= this._file.length;
+  }
+
+  private get _file() {
+    return PvFileMem._memFiles.get(this._path);
+  }
+
+  private set _file(content: Uint8Array) {
+    PvFileMem._memFiles.set(this._path, content);
   }
 }

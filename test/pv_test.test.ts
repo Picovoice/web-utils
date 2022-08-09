@@ -114,6 +114,7 @@ describe("PvFile", () => {
       const fileSize = 12345678;
       const file = await open(path, "w");
       await file.write(buildData(fileSize));
+      await file.seek(0, 0);
 
       const fullData = await file.read(1, fileSize);
       expect(fullData).length(fileSize);
@@ -141,6 +142,39 @@ describe("PvFile", () => {
       const remaining = await file.read(1, fileSize);
       expect(remaining).length(fileSize - readAcc - seekAcc);
       expect(remaining).to.deep.eq(fullData.slice(readAcc + seekAcc));
+    } catch (e) {
+      expect(e).eq(undefined, e?.message);
+    }
+  });
+
+  it("Write file twice", async () => {
+    try {
+      const file = await open(path, "w");
+      await file.write(basicData);
+      await file.write(basicData);
+      expect(file.tell()).eq(basicData.length * 2);
+    } catch (e) {
+      expect(e).eq(undefined, e?.message);
+    }
+  });
+
+  it("Write file append", async () => {
+    try {
+      const file = await open(path, "a");
+      await file.write(basicData);
+      expect(file.tell()).eq(basicData.length * 3);
+    } catch (e) {
+      expect(e).eq(undefined, e?.message);
+    }
+  });
+
+  it("Read then Write", async () => {
+    try {
+      const file = await open(path, "w");
+      const data = await file.read(1, basicData.length / 2);
+      expect(data.length).eq(basicData.length / 2);
+      await file.write(basicData);
+      expect(file.tell()).eq(basicData.length + basicData.length / 2);
     } catch (e) {
       expect(e).eq(undefined, e?.message);
     }
