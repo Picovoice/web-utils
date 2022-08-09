@@ -266,7 +266,7 @@ export class PvFileIDB extends PvFile {
    * @throws Error if file doesn't exist or if EOF.
    */
   public seek(offset: number, whence: number): void {
-    if (!this.exists()) {
+    if (!this.exists() && this._mode === "readonly") {
       throw new Error(`'${this._path}' doesn't exist.`);
     }
 
@@ -317,6 +317,8 @@ export class PvFileIDB extends PvFile {
       };
       req.onsuccess = () => {
         this._meta = undefined;
+        this._pageOffset = 0;
+        this._pagePtr = 0;
         resolve();
       };
     });
