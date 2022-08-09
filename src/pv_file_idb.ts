@@ -109,9 +109,9 @@ export class PvFileIDB extends PvFile {
         if (e.name === "InvalidStateError") {
           const error = new Error("IndexedDB is not supported");
           error.name = "IndexedDBNotSupported";
-          throw error;
+          reject(error);
         } else {
-          throw e;
+          reject(e);
         }
       }
     });
