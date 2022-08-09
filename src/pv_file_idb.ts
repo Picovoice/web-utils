@@ -86,24 +86,34 @@ export class PvFileIDB extends PvFile {
     }
 
     return new Promise(async(resolve, reject) => {
-      const db = await getDB();
-      const dbMode = mode.includes('r') ? "readonly" : "readwrite";
-      const req = db.transaction(PV_FILE_STORE, dbMode).objectStore(PV_FILE_STORE).get(path);
-      req.onerror = () => {
-        reject(req.error);
-      };
-      req.onsuccess = () => {
-        const meta = req.result;
-        if (meta === undefined && dbMode === "readonly") {
-          reject(new Error(`'${path}' doesn't exist.`));
-          return;
+      try {
+        const db = await getDB();
+        const dbMode = mode.includes('r') ? "readonly" : "readwrite";
+        const req = db.transaction(PV_FILE_STORE, dbMode).objectStore(PV_FILE_STORE).get(path);
+        req.onerror = () => {
+          reject(req.error);
+        };
+        req.onsuccess = () => {
+          const meta = req.result;
+          if (meta === undefined && dbMode === "readonly") {
+            reject(new Error(`'${path}' doesn't exist.`));
+            return;
+          }
+          const fileIDB = new PvFileIDB(path, meta, db, dbMode);
+          if (mode.includes('a')) {
+            fileIDB.seek(0, 2);
+          }
+          resolve(fileIDB);
+        };
+      } catch (e) {
+        if (e.name === "InvalidStateError") {
+          const error = new Error("IndexedDB is not supported");
+          error.name = "IndexedDBNotSupported";
+          throw error;
+        } else {
+          throw e;
         }
-        const fileIDB = new PvFileIDB(path, meta, db, dbMode);
-        if (mode.includes('a')) {
-          fileIDB.seek(0, 2);
-        }
-        resolve(fileIDB);
-      };
+      }
     });
   }
 
