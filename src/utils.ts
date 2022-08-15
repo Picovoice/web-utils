@@ -165,7 +165,9 @@ export async function fromPublicDirectory(
 ) {
   const pvFile = await open(modelPath, "w");
   if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
-    const response = await fetch(publicPath);
+    const response = await fetch(publicPath, {
+      cache: "no-cache",
+    });
     if (!response.ok) {
       throw new Error(`Failed to get model from '${publicPath}'`);
     }
