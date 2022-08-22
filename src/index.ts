@@ -11,7 +11,8 @@
 
 /* eslint camelcase: 0 */
 
-import { aligned_alloc_type, pv_free_type, buildWasm } from "./wasm";
+import { PvModel } from './types';
+import { aligned_alloc_type, pv_free_type, buildWasm } from './wasm';
 
 import {
   arrayBufferToBase64AtIndex,
@@ -21,30 +22,27 @@ import {
   fromBase64,
   fromPublicDirectory,
   isAccessKeyValid,
+  loadModel,
   stringHeaderToObject,
   open,
 } from './utils';
 
-import {
-  PvFile
-} from "./pv_file";
+import { PvFile } from './pv_file';
 
-import {
-  PvFileMem
-} from "./pv_file_mem";
+import { PvFileMem } from './pv_file_mem';
 
 import {
   PvFileIDB,
   getDB,
   DB_NAME,
   DB_VERSION,
-  PV_FILE_STORE
-} from "./pv_file_idb";
+  PV_FILE_STORE,
+} from './pv_file_idb';
 
 const dbConfig = {
   DB_NAME,
   DB_VERSION,
-  PV_FILE_STORE
+  PV_FILE_STORE,
 };
 
 export {
@@ -61,11 +59,14 @@ export {
   stringHeaderToObject,
   fromBase64,
   fromPublicDirectory,
+  loadModel,
   // PvFile
   open,
   dbConfig,
   getDB,
   PvFile,
   PvFileIDB,
-  PvFileMem
+  PvFileMem,
+  // types
+  PvModel,
 };
