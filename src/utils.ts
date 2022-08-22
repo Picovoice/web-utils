@@ -9,9 +9,10 @@
   specific language governing permissions and limitations under the License.
 */
 
-import { PvFile } from "./pv_file";
-import { PvFileIDB } from "./pv_file_idb";
-import { PvFileMem } from "./pv_file_mem";
+import { PvFile } from './pv_file';
+import { PvFileIDB } from './pv_file_idb';
+import { PvFileMem } from './pv_file_mem';
+import { PvModel } from './types';
 
 /**
  * Convert a null terminated phrase stored inside an array buffer to a string
@@ -22,7 +23,7 @@ import { PvFileMem } from "./pv_file_mem";
  */
 export function arrayBufferToStringAtIndex(
   arrayBuffer: Uint8Array,
-  indexStart: number,
+  indexStart: number
 ): string {
   let indexEnd = indexStart;
   while (arrayBuffer[indexEnd] !== 0) {
@@ -55,7 +56,11 @@ export function base64ToUint8Array(base64String: string): Uint8Array {
  * @param index the index at which the phrase is stored
  * @return base64 string
  */
-export function arrayBufferToBase64AtIndex(arrayBuffer: ArrayBuffer, size: number, index: number): string {
+export function arrayBufferToBase64AtIndex(
+  arrayBuffer: ArrayBuffer,
+  size: number,
+  index: number
+): string {
   let binary = '';
   for (let i = 0; i < size; i++) {
     // @ts-ignore
@@ -71,7 +76,7 @@ export function arrayBufferToBase64AtIndex(arrayBuffer: ArrayBuffer, size: numbe
  * @return retrieved object
  */
 // eslint-disable-next-line
- export function stringHeaderToObject(stringHeader: string): object {
+export function stringHeaderToObject(stringHeader: string): object {
   const objectHeader = {};
   for (const property of stringHeader.split('\r\n')) {
     const keyValuePair = property.split(': ');
@@ -91,7 +96,11 @@ export function arrayBufferToBase64AtIndex(arrayBuffer: ArrayBuffer, size: numbe
  * @param time timeout value
  * @return received response
  */
-export async function fetchWithTimeout(uri: string, options = {}, time = 5000): Promise<Response> {
+export async function fetchWithTimeout(
+  uri: string,
+  options = {},
+  time = 5000
+): Promise<Response> {
   const controller = new AbortController();
   const config = { ...options, signal: controller.signal };
   const timeout = setTimeout(() => {
@@ -108,11 +117,17 @@ export async function fetchWithTimeout(uri: string, options = {}, time = 5000): 
  * @return true if the AccessKey is valid, false if not
  */
 export function isAccessKeyValid(accessKey: string): boolean {
-  if (typeof accessKey !== 'string' || accessKey === undefined || accessKey === null) {
+  if (
+    typeof accessKey !== 'string' ||
+    accessKey === undefined ||
+    accessKey === null
+  ) {
     return false;
   }
   const accessKeyCleaned = accessKey.trim();
-  if (accessKeyCleaned === '') { return false; }
+  if (accessKeyCleaned === '') {
+    return false;
+  }
   try {
     return btoa(atob(accessKeyCleaned)) === accessKeyCleaned;
   } catch (err) {
@@ -128,9 +143,11 @@ export async function open(path: string, mode: string): Promise<PvFile> {
   try {
     return await PvFileIDB.open(path, mode);
   } catch (e) {
-    if (e.name === "IndexedDBNotSupported") {
+    if (e.name === 'IndexedDBNotSupported') {
       // eslint-disable-next-line no-console
-      console.warn("IndexedDB is not supported. Fallback to in-memory storage.");
+      console.warn(
+        'IndexedDB is not supported. Fallback to in-memory storage.'
+      );
       return PvFileMem.open(path, mode);
     }
     throw e;
@@ -145,10 +162,14 @@ export async function fromBase64(
   modelPath: string,
   modelBase64: string,
   forceWrite: boolean,
-  version: number,
+  version: number
 ) {
-  const pvFile = await open(modelPath, "w");
-  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
+  const pvFile = await open(modelPath, 'w');
+  if (
+    forceWrite ||
+    pvFile.meta === undefined ||
+    version > pvFile.meta.version
+  ) {
     await pvFile.write(base64ToUint8Array(modelBase64), version);
   }
 }
@@ -161,12 +182,16 @@ export async function fromPublicDirectory(
   modelPath: string,
   publicPath: string,
   forceWrite: boolean,
-  version: number,
+  version: number
 ) {
-  const pvFile = await open(modelPath, "w");
-  if (forceWrite || (pvFile.meta === undefined) || (version > pvFile.meta.version)) {
+  const pvFile = await open(modelPath, 'w');
+  if (
+    forceWrite ||
+    pvFile.meta === undefined ||
+    version > pvFile.meta.version
+  ) {
     const response = await fetch(publicPath, {
-      cache: "no-cache",
+      cache: 'no-cache',
     });
     if (!response.ok) {
       throw new Error(`Failed to get model from '${publicPath}'`);
@@ -174,4 +199,41 @@ export async function fromPublicDirectory(
     const data = await response.arrayBuffer();
     await pvFile.write(new Uint8Array(data), version);
   }
+}
+
+/**
+ * Takes a Picovoice model file and either decodes it from base64 or fetches
+ * it from the public directory. Saves the result to storage on version increase or
+ * if forceWrite is enabled.
+ */
+export async function loadModel(model: PvModel): Promise<string> {
+  if (model === undefined || model === null) {
+    throw new Error('The model is undefined / empty');
+  }
+
+  const {
+    base64,
+    publicPath,
+    customWritePath,
+    forceWrite = false,
+    version = 1,
+  } = model;
+
+  if (customWritePath === undefined || customWritePath === null) {
+    throw new Error(
+      'The customWritePath of the provided model is undefined / empty'
+    );
+  }
+
+  if (base64 !== undefined && base64 !== null) {
+    await fromBase64(customWritePath, base64, forceWrite, version);
+  } else if (publicPath !== undefined && publicPath !== null) {
+    await fromPublicDirectory(customWritePath, publicPath, forceWrite, version);
+  } else {
+    throw new Error(
+      "The provided model doesn't contain a valid publicPath or base64 value"
+    );
+  }
+
+  return customWritePath;
 }
