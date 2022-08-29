@@ -173,10 +173,11 @@ export async function buildWasm(
 
   const pvGetOriginInfo = async function(originInfoAddressAddress: number): Promise<void> {
     const origin = self.origin ?? self.location.origin;
+    const hostname = new URL(origin).hostname;
     // eslint-disable-next-line
     const originInfoAddress = await aligned_alloc(
       Uint8Array.BYTES_PER_ELEMENT,
-      (origin.length + 1) * Uint8Array.BYTES_PER_ELEMENT
+      (hostname.length + 1) * Uint8Array.BYTES_PER_ELEMENT
     );
 
     if (originInfoAddress === 0) {
@@ -186,10 +187,10 @@ export async function buildWasm(
     memoryBufferInt32[
       originInfoAddressAddress / Int32Array.BYTES_PER_ELEMENT
     ] = originInfoAddress;
-    for (let i = 0; i < origin.length; i++) {
-      memoryBufferUint8[originInfoAddress + i] = origin.charCodeAt(i);
+    for (let i = 0; i < hostname.length; i++) {
+      memoryBufferUint8[originInfoAddress + i] = hostname.charCodeAt(i);
     }
-    memoryBufferUint8[originInfoAddress + origin.length] = 0;
+    memoryBufferUint8[originInfoAddress + hostname.length] = 0;
   };
 
   const pvFileOpenWasm = async function(
