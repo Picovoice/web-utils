@@ -148,6 +148,16 @@ export async function open(path: string, mode: string): Promise<PvFile> {
       console.warn(
         'IndexedDB is not supported. Fallback to in-memory storage.'
       );
+      // @ts-ignore
+      if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          'In-memory storage cannot be used inside a worker.'
+        );
+        const error = new Error('Failed to start PvFile');
+        error.name = 'PvFileNotSupported';
+        throw error;
+      }
       return PvFileMem.open(path, mode);
     }
     throw e;
