@@ -208,6 +208,9 @@ export async function buildWasm(
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
     } catch (e) {
+      if (e.name === 'PvFileNotSupported') {
+        throw e;
+      }
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;

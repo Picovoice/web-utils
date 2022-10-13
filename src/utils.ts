@@ -151,7 +151,7 @@ export async function open(path: string, mode: string): Promise<PvFile> {
       // @ts-ignore
       if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope) {
         // eslint-disable-next-line no-console
-        console.warn(
+        console.error(
           'In-memory storage cannot be used inside a worker.'
         );
         const error = new Error('Failed to start PvFile');
