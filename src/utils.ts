@@ -117,11 +117,7 @@ export async function fetchWithTimeout(
  * @return true if the AccessKey is valid, false if not
  */
 export function isAccessKeyValid(accessKey: string): boolean {
-  if (
-    typeof accessKey !== 'string' ||
-    accessKey === undefined ||
-    accessKey === null
-  ) {
+  if (typeof accessKey !== 'string') {
     return false;
   }
   const accessKeyCleaned = accessKey.trim();
@@ -148,12 +144,14 @@ export async function open(path: string, mode: string): Promise<PvFile> {
       console.warn(
         'IndexedDB is not supported. Fallback to in-memory storage.'
       );
-      // @ts-ignore
-      if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope) {
+      if (
+        // @ts-ignore
+        typeof WorkerGlobalScope !== 'undefined' &&
+        // @ts-ignore
+        self instanceof WorkerGlobalScope
+      ) {
         // eslint-disable-next-line no-console
-        console.error(
-          'In-memory storage cannot be used inside a worker.'
-        );
+        console.error('In-memory storage cannot be used inside a worker.');
         const error = new Error('Failed to start PvFile');
         error.name = 'PvFileNotSupported';
         throw error;
@@ -192,7 +190,8 @@ export async function fromPublicDirectory(
   modelPath: string,
   publicPath: string,
   forceWrite: boolean,
-  version: number
+  version: number,
+  numFetchReties: number
 ) {
   const pvFile = await open(modelPath, 'w');
   if (
@@ -200,14 +199,41 @@ export async function fromPublicDirectory(
     pvFile.meta === undefined ||
     version > pvFile.meta.version
   ) {
-    const response = await fetch(publicPath, {
-      cache: 'no-cache',
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to get model from '${publicPath}'`);
+    if (numFetchReties < 0) {
+      throw Error('numFetchRetries must be a positive number');
     }
-    const data = await response.arrayBuffer();
-    await pvFile.write(new Uint8Array(data), version);
+
+    let numAttemptsLeft: number = numFetchReties + 1;
+    let data: ArrayBuffer = null;
+    let error: Error = null;
+    while (data === null && numAttemptsLeft > 0) {
+      error = null;
+      try {
+        const response = await fetch(publicPath, {
+          cache: 'no-cache',
+        });
+        if (response.ok) {
+          data = await response.arrayBuffer();
+        } else {
+          const responseText = await response.text();
+          error = new Error(
+            `Error response returned while fetching model from '${publicPath}': ${responseText}`
+          );
+        }
+      } catch (e: any) {
+        error = new Error(
+          `Failed to fetch model from '${publicPath}': ${e.message}`
+        );
+      }
+
+      numAttemptsLeft--;
+    }
+
+    if (data !== null) {
+      await pvFile.write(new Uint8Array(data), version);
+    } else if (error !== null) {
+      throw error;
+    }
   }
 }
 
@@ -227,6 +253,7 @@ export async function loadModel(model: PvModel): Promise<string> {
     customWritePath,
     forceWrite = false,
     version = 1,
+    numFetchRetries = 0,
   } = model;
 
   if (customWritePath === undefined || customWritePath === null) {
@@ -238,7 +265,13 @@ export async function loadModel(model: PvModel): Promise<string> {
   if (base64 !== undefined && base64 !== null) {
     await fromBase64(customWritePath, base64, forceWrite, version);
   } else if (publicPath !== undefined && publicPath !== null) {
-    await fromPublicDirectory(customWritePath, publicPath, forceWrite, version);
+    await fromPublicDirectory(
+      customWritePath,
+      publicPath,
+      forceWrite,
+      version,
+      numFetchRetries
+    );
   } else {
     throw new Error(
       "The provided model doesn't contain a valid publicPath or base64 value"

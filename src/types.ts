@@ -20,4 +20,6 @@ export type PvModel = {
   forceWrite?: boolean;
   /** Version of file in storage. Set to a higher number to update the model file. */
   version?: number;
+  /** Number of fetch retry attempts (only applies when `publicPath` is defined) **/
+  numFetchRetries?: number
 };

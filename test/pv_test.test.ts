@@ -11,7 +11,7 @@
 
 /// <reference types="cypress" />
 
-import { open } from "../src";
+import { fromPublicDirectory, open } from '../src';
 
 const buildData = (size: number) => {
   const data = new Uint8Array(size);
@@ -21,22 +21,22 @@ const buildData = (size: number) => {
   return data;
 };
 
-const path = "testPath";
+const path = 'testPath';
 const basicData = buildData(1024);
 
-describe("PvFile", () => {
-  it("Write file", async () => {
+describe('PvFile', () => {
+  it('Write file', async () => {
     try {
-      const file = await open(path, "w");
+      const file = await open(path, 'w');
       await file.write(basicData);
     } catch (e) {
       expect(e).eq(undefined, e?.message);
     }
   });
 
-  it("Exists file", async () => {
+  it('Exists file', async () => {
     try {
-      const file = await open(path, "r");
+      const file = await open(path, 'r');
       const exists = file.exists();
       expect(exists).eq(true);
     } catch (e) {
@@ -44,9 +44,9 @@ describe("PvFile", () => {
     }
   });
 
-  it("Write file increment version", async () => {
+  it('Write file increment version', async () => {
     try {
-      const file = await open(path, "w");
+      const file = await open(path, 'w');
       await file.write(basicData, 2);
       expect(file.meta.version).eq(2);
     } catch (e) {
@@ -54,9 +54,9 @@ describe("PvFile", () => {
     }
   });
 
-  it("Seek file", async () => {
+  it('Seek file', async () => {
     try {
-      const file = await open(path, "r");
+      const file = await open(path, 'r');
       file.seek(512, 0);
       const data = await file.read(1, 512);
       expect(data).length(512);
@@ -65,9 +65,9 @@ describe("PvFile", () => {
     }
   });
 
-  it("Tell file", async () => {
+  it('Tell file', async () => {
     try {
-      const file = await open(path, "r");
+      const file = await open(path, 'r');
       file.seek(0, 2);
       const offset = file.tell();
       expect(offset).eq(1024);
@@ -76,9 +76,9 @@ describe("PvFile", () => {
     }
   });
 
-  it("Read file", async () => {
+  it('Read file', async () => {
     try {
-      const file = await open(path, "r");
+      const file = await open(path, 'r');
       const data = await file.read(1, 1024);
       expect(data).length(1024);
       expect(data).to.deep.eq(basicData);
@@ -87,9 +87,9 @@ describe("PvFile", () => {
     }
   });
 
-  it("Read file different element size", async () => {
+  it('Read file different element size', async () => {
     try {
-      const file = await open(path, "r");
+      const file = await open(path, 'r');
       const data = await file.read(3, 999);
       expect(data).length(1023);
       expect(data).to.deep.eq(basicData.slice(0, 1024 - (1024 % 3)));
@@ -98,9 +98,9 @@ describe("PvFile", () => {
     }
   });
 
-  it("Remove file", async () => {
+  it('Remove file', async () => {
     try {
-      const file = await open(path, "w");
+      const file = await open(path, 'w');
       await file.remove();
       const exists = file.exists();
       expect(exists).eq(false);
@@ -109,10 +109,10 @@ describe("PvFile", () => {
     }
   });
 
-  it("Big file operation", async () => {
+  it('Big file operation', async () => {
     try {
       const fileSize = 12345678;
-      const file = await open(path, "w");
+      const file = await open(path, 'w');
       await file.write(buildData(fileSize));
       await file.seek(0, 0);
 
@@ -128,7 +128,9 @@ describe("PvFile", () => {
       for (let i = 0; i < reads.length; i++) {
         const data = await file.read(1, reads[i]);
         expect(data).length(reads[i]);
-        expect(data).to.deep.eq(fullData.slice(readAcc + seekAcc, readAcc + seekAcc + reads[i]));
+        expect(data).to.deep.eq(
+          fullData.slice(readAcc + seekAcc, readAcc + seekAcc + reads[i])
+        );
 
         await file.seek(seeks[i], 1);
 
@@ -147,9 +149,9 @@ describe("PvFile", () => {
     }
   });
 
-  it("Write file twice", async () => {
+  it('Write file twice', async () => {
     try {
-      const file = await open(path, "w");
+      const file = await open(path, 'w');
       await file.write(basicData);
       await file.write(basicData);
       expect(file.tell()).eq(basicData.length * 2);
@@ -158,9 +160,9 @@ describe("PvFile", () => {
     }
   });
 
-  it("Write file append", async () => {
+  it('Write file append', async () => {
     try {
-      const file = await open(path, "a");
+      const file = await open(path, 'a');
       await file.write(basicData);
       expect(file.tell()).eq(basicData.length * 3);
     } catch (e) {
@@ -168,9 +170,9 @@ describe("PvFile", () => {
     }
   });
 
-  it("Read then Write", async () => {
+  it('Read then Write', async () => {
     try {
-      const file = await open(path, "w");
+      const file = await open(path, 'w');
       const data = await file.read(1, basicData.length / 2);
       expect(data.length).eq(basicData.length / 2);
       await file.write(basicData);
@@ -178,5 +180,92 @@ describe("PvFile", () => {
     } catch (e) {
       expect(e).eq(undefined, e?.message);
     }
+  });
+});
+
+describe('PvModel fetch', () => {
+  it('Fetch fail, no retries', async () => {
+    const publicPath = 'https://public.com/path.pv';
+    cy.intercept('GET', publicPath, {
+      ok: false,
+      statusCode: 404,
+    });
+    let error = null;
+    try {
+      await fromPublicDirectory('model_path.pv', publicPath, true, 1, 0);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).not.eq(null);
+  });
+  it('Invalid num retries', async () => {
+    const publicPath = 'https://public.com/path.pv';
+    cy.intercept('GET', publicPath, {
+      ok: false,
+      statusCode: 404,
+    });
+    let error = null;
+    try {
+      await fromPublicDirectory('model_path.pv', publicPath, true, 1, -1);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).not.eq(null);
+  });
+  it('Fetch fail after multiple retries', async () => {
+    const publicPath = 'https://public.com/path.pv';
+    cy.intercept('GET', publicPath, {
+      ok: false,
+      statusCode: 404,
+    });
+    let error = null;
+    try {
+      await fromPublicDirectory('model_path.pv', publicPath, true, 1, 3);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).not.eq(null);
+  });
+
+  it('Fetch fail with error after multiple retries', async () => {
+    const publicPath = 'https://public.com/path.pv';
+    cy.intercept('GET', publicPath, { forceNetworkError: true });
+    let error = null;
+    try {
+      await fromPublicDirectory('model_path.pv', publicPath, true, 1, 3);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).not.eq(null);
+  });
+
+  it('Fetch succeed on last retry', async () => {
+    const publicPath = 'https://public.com/path.pv';
+    const retries = 3;
+
+    let attempts = 0;
+    cy.intercept('GET', publicPath, req => {
+      attempts++;
+      if (attempts > retries) {
+        req.reply({
+          ok: true,
+          body: '',
+        });
+        return;
+      }
+
+      req.reply({
+        ok: false,
+        statusCode: 404,
+      });
+    });
+
+    let error = null;
+    try {
+      await fromPublicDirectory('model_path.pv', publicPath, true, 1, retries);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).eq(null);
   });
 });
