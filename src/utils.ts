@@ -233,6 +233,10 @@ export async function fromPublicDirectory(
       await pvFile.write(new Uint8Array(data), version);
     } else if (error !== null) {
       throw error;
+    } else {
+      throw new Error(
+        `Unexpected error encountered while fetching model from '${publicPath}'`
+      );
     }
   }
 }
