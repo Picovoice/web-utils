@@ -117,11 +117,7 @@ export async function fetchWithTimeout(
  * @return true if the AccessKey is valid, false if not
  */
 export function isAccessKeyValid(accessKey: string): boolean {
-  if (
-    typeof accessKey !== 'string' ||
-    accessKey === undefined ||
-    accessKey === null
-  ) {
+  if (typeof accessKey !== 'string') {
     return false;
   }
   const accessKeyCleaned = accessKey.trim();
@@ -148,12 +144,14 @@ export async function open(path: string, mode: string): Promise<PvFile> {
       console.warn(
         'IndexedDB is not supported. Fallback to in-memory storage.'
       );
-      // @ts-ignore
-      if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope) {
+      if (
+        // @ts-ignore
+        typeof WorkerGlobalScope !== 'undefined' &&
+        // @ts-ignore
+        self instanceof WorkerGlobalScope
+      ) {
         // eslint-disable-next-line no-console
-        console.error(
-          'In-memory storage cannot be used inside a worker.'
-        );
+        console.error('In-memory storage cannot be used inside a worker.');
         const error = new Error('Failed to start PvFile');
         error.name = 'PvFileNotSupported';
         throw error;
@@ -184,6 +182,9 @@ export async function fromBase64(
   }
 }
 
+const BACKOFF_CAP_MILLISECONDS = 5000;
+const BACKOFF_START_MILLISECONDS = 2;
+
 /**
  * PvFile helper.
  * Write publicPath's model to modelPath depending on options forceWrite and version.
@@ -192,7 +193,8 @@ export async function fromPublicDirectory(
   modelPath: string,
   publicPath: string,
   forceWrite: boolean,
-  version: number
+  version: number,
+  numFetchReties: number
 ) {
   const pvFile = await open(modelPath, 'w');
   if (
@@ -200,14 +202,54 @@ export async function fromPublicDirectory(
     pvFile.meta === undefined ||
     version > pvFile.meta.version
   ) {
-    const response = await fetch(publicPath, {
-      cache: 'no-cache',
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to get model from '${publicPath}'`);
+    if (numFetchReties < 0) {
+      throw Error('numFetchRetries must be a positive number');
     }
-    const data = await response.arrayBuffer();
-    await pvFile.write(new Uint8Array(data), version);
+
+    let waitTimeMilliseconds = BACKOFF_START_MILLISECONDS;
+    const delay = (delayMilliseconds: number) =>
+      new Promise(resolve => {
+        setTimeout(resolve, delayMilliseconds);
+      });
+
+    let numAttemptsLeft: number = numFetchReties + 1;
+    let error: Error = null;
+    while (numAttemptsLeft > 0) {
+      error = null;
+      try {
+        const response = await fetch(publicPath, {
+          cache: 'no-cache',
+        });
+        if (response.ok) {
+          const data = await response.arrayBuffer();
+          await pvFile.write(new Uint8Array(data), version);
+          return;
+        }
+        const responseText = await response.text();
+        error = new Error(
+          `Error response returned while fetching model from '${publicPath}': ${responseText}`
+        );
+      } catch (e: any) {
+        error = new Error(
+          `Failed to fetch model from '${publicPath}': ${e.message}`
+        );
+      }
+
+      numAttemptsLeft--;
+      await delay(waitTimeMilliseconds);
+      waitTimeMilliseconds = Math.min(
+        BACKOFF_CAP_MILLISECONDS,
+        waitTimeMilliseconds * BACKOFF_START_MILLISECONDS
+      );
+    }
+
+    if (error !== null) {
+      throw error;
+    } else {
+      throw new Error(
+        `Unexpected error encountered while fetching model from '${publicPath}'`
+      );
+    }
   }
 }
 
@@ -227,6 +269,7 @@ export async function loadModel(model: PvModel): Promise<string> {
     customWritePath,
     forceWrite = false,
     version = 1,
+    numFetchRetries = 0,
   } = model;
 
   if (customWritePath === undefined || customWritePath === null) {
@@ -238,7 +281,13 @@ export async function loadModel(model: PvModel): Promise<string> {
   if (base64 !== undefined && base64 !== null) {
     await fromBase64(customWritePath, base64, forceWrite, version);
   } else if (publicPath !== undefined && publicPath !== null) {
-    await fromPublicDirectory(customWritePath, publicPath, forceWrite, version);
+    await fromPublicDirectory(
+      customWritePath,
+      publicPath,
+      forceWrite,
+      version,
+      numFetchRetries
+    );
   } else {
     throw new Error(
       "The provided model doesn't contain a valid publicPath or base64 value"
