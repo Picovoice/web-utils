@@ -182,6 +182,9 @@ export async function fromBase64(
   }
 }
 
+const BACKOFF_CAP_MILLISECONDS = 5000;
+const BACKOFF_START_MILLISECONDS = 2;
+
 /**
  * PvFile helper.
  * Write publicPath's model to modelPath depending on options forceWrite and version.
@@ -203,23 +206,29 @@ export async function fromPublicDirectory(
       throw Error('numFetchRetries must be a positive number');
     }
 
+    let waitTimeMilliseconds = BACKOFF_START_MILLISECONDS;
+    const delay = (delayMilliseconds: number) =>
+      new Promise(resolve => {
+        setTimeout(resolve, delayMilliseconds);
+      });
+
     let numAttemptsLeft: number = numFetchReties + 1;
-    let data: ArrayBuffer = null;
     let error: Error = null;
-    while (data === null && numAttemptsLeft > 0) {
+    while (numAttemptsLeft > 0) {
       error = null;
       try {
         const response = await fetch(publicPath, {
           cache: 'no-cache',
         });
         if (response.ok) {
-          data = await response.arrayBuffer();
-        } else {
-          const responseText = await response.text();
-          error = new Error(
-            `Error response returned while fetching model from '${publicPath}': ${responseText}`
-          );
+          const data = await response.arrayBuffer();
+          await pvFile.write(new Uint8Array(data), version);
+          return;
         }
+        const responseText = await response.text();
+        error = new Error(
+          `Error response returned while fetching model from '${publicPath}': ${responseText}`
+        );
       } catch (e: any) {
         error = new Error(
           `Failed to fetch model from '${publicPath}': ${e.message}`
@@ -227,11 +236,14 @@ export async function fromPublicDirectory(
       }
 
       numAttemptsLeft--;
+      await delay(waitTimeMilliseconds);
+      waitTimeMilliseconds = Math.min(
+        BACKOFF_CAP_MILLISECONDS,
+        waitTimeMilliseconds * BACKOFF_START_MILLISECONDS
+      );
     }
 
-    if (data !== null) {
-      await pvFile.write(new Uint8Array(data), version);
-    } else if (error !== null) {
+    if (error !== null) {
       throw error;
     } else {
       throw new Error(
