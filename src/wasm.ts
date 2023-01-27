@@ -34,11 +34,13 @@ export type pv_free_type = (ptr: number) => Promise<void>;
  *
  * @param memory Initialized WebAssembly memory object.
  * @param wasm The wasm file in base64 string or stream to public path (i.e. fetch("file.wasm")) to initialize.
+ * @param pvError The PvError object to store error details.
  * @returns An object containing the exported functions from WASM.
  */
 export async function buildWasm(
   memory: WebAssembly.Memory,
-  wasm: string | Promise<Response>
+  wasm: string | Promise<Response>,
+  pvError?: PvError
 ): Promise<any> {
   const memoryBufferUint8 = new Uint8Array(memory.buffer);
   const memoryBufferInt32 = new Int32Array(memory.buffer);
@@ -113,7 +115,7 @@ export async function buildWasm(
       );
       statusCode = response.status;
     } catch (error) {
-      PvError.addError('pvHttpsRequestWasm', error);
+      pvError?.addError('pvHttpsRequestWasm', error);
       statusCode = 0;
     }
     // @ts-ignore
@@ -210,7 +212,7 @@ export async function buildWasm(
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
     } catch (e) {
-      PvError.addError('pvFileOpenWasm', e);
+      pvError?.addError('pvFileOpenWasm', e);
       if (e.name === 'PvFileNotSupported') {
         throw e;
       }
@@ -231,7 +233,7 @@ export async function buildWasm(
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
     } catch (e) {
-      PvError.addError('pvFileCloseWasm', e);
+      pvError?.addError('pvFileCloseWasm', e);
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;
@@ -253,7 +255,7 @@ export async function buildWasm(
         numReadAddress / Int32Array.BYTES_PER_ELEMENT
       ] = (content.length / size);
     } catch (e) {
-      PvError.addError('pvFileReadWasm', e);
+      pvError?.addError('pvFileReadWasm', e);
       memoryBufferInt32[
         numReadAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;
@@ -276,7 +278,7 @@ export async function buildWasm(
         numWriteAddress / Int32Array.BYTES_PER_ELEMENT
       ] = (content.length / size);
     } catch (e) {
-      PvError.addError('pvFileWriteWasm', e);
+      pvError?.addError('pvFileWriteWasm', e);
       memoryBufferInt32[
         numWriteAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 1;
@@ -296,7 +298,7 @@ export async function buildWasm(
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
     } catch (e) {
-      PvError.addError('pvFileSeekWasm', e);
+      pvError?.addError('pvFileSeekWasm', e);
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;
@@ -313,7 +315,7 @@ export async function buildWasm(
         offsetAddress / Int32Array.BYTES_PER_ELEMENT
       ] = file.tell();
     } catch (e) {
-      PvError.addError('pvFileTellWasm', e);
+      pvError?.addError('pvFileTellWasm', e);
       memoryBufferInt32[
         offsetAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;
@@ -332,7 +334,7 @@ export async function buildWasm(
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
     } catch (e) {
-      PvError.addError('pvFileRemoveWasm', e);
+      pvError?.addError('pvFileRemoveWasm', e);
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;

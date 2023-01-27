@@ -16,13 +16,13 @@ type PvErrorType = {
 
 
 export class PvError {
-  private static _maxNumErrors = 10;
-  private static _errors: PvErrorType[] = [];
+  protected _maxNumErrors = 10;
+  protected _errors: PvErrorType[] = [];
 
   /**
    * Store an error with a key and message.
    */
-  public static addError(key: string, error?: string | Error) {
+  public addError(key: string, error?: string | Error) {
     if (this._errors.length >= this._maxNumErrors) {
       this._errors.shift();
     }
@@ -43,7 +43,7 @@ export class PvError {
   /**
    * Get all recent error messages. Cleans up error list.
    */
-  public static getErrors() {
+  public getErrors() {
     const errors = [...this._errors];
     this._errors = [];
     return errors;
@@ -52,7 +52,7 @@ export class PvError {
   /**
    * Get errors formatted into a string.
    */
-  public static getErrorString() {
+  public getErrorString() {
     let message = '';
     for (const error of this.getErrors()) {
       message += `'${error.key}' failed with: ${error.message}.\n`;
@@ -63,7 +63,7 @@ export class PvError {
   /**
    * Sets the maximum number of errors it can store.
    */
-  public static setMaxErrorNum(num: number) {
+  public setMaxErrorNum(num: number) {
     this._maxNumErrors = num;
   }
 }
