@@ -53,11 +53,7 @@ export class PvError {
    * Get errors formatted into a string.
    */
   public getErrorString() {
-    let message = '';
-    for (const error of this.getErrors()) {
-      message += `'${error.key}' failed with: ${error.message}.\n`;
-    }
-    return message;
+    return this.getErrors().map(({key, message}) => `'${key}' failed with: ${message}.`).join('\n');
   }
 
   /**
