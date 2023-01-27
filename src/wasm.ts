@@ -1,5 +1,5 @@
 /*
-  Copyright 2022 Picovoice Inc.
+  Copyright 2022-2023 Picovoice Inc.
 
   You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
   file accompanying this source.
@@ -22,6 +22,7 @@ import {
 } from './utils';
 
 import { PvFile } from "./pv_file";
+import { PvError } from './pv_error';
 
 import { wasiSnapshotPreview1Emulator } from './wasi_snapshot';
 
@@ -112,6 +113,7 @@ export async function buildWasm(
       );
       statusCode = response.status;
     } catch (error) {
+      PvError.addError('pvHttpsRequestWasm', error);
       statusCode = 0;
     }
     // @ts-ignore
@@ -208,6 +210,7 @@ export async function buildWasm(
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
     } catch (e) {
+      PvError.addError('pvFileOpenWasm', e);
       if (e.name === 'PvFileNotSupported') {
         throw e;
       }
@@ -228,6 +231,7 @@ export async function buildWasm(
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
     } catch (e) {
+      PvError.addError('pvFileCloseWasm', e);
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;
@@ -249,6 +253,7 @@ export async function buildWasm(
         numReadAddress / Int32Array.BYTES_PER_ELEMENT
       ] = (content.length / size);
     } catch (e) {
+      PvError.addError('pvFileReadWasm', e);
       memoryBufferInt32[
         numReadAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;
@@ -271,6 +276,7 @@ export async function buildWasm(
         numWriteAddress / Int32Array.BYTES_PER_ELEMENT
       ] = (content.length / size);
     } catch (e) {
+      PvError.addError('pvFileWriteWasm', e);
       memoryBufferInt32[
         numWriteAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 1;
@@ -290,6 +296,7 @@ export async function buildWasm(
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
     } catch (e) {
+      PvError.addError('pvFileSeekWasm', e);
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;
@@ -306,6 +313,7 @@ export async function buildWasm(
         offsetAddress / Int32Array.BYTES_PER_ELEMENT
       ] = file.tell();
     } catch (e) {
+      PvError.addError('pvFileTellWasm', e);
       memoryBufferInt32[
         offsetAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;
@@ -324,6 +332,7 @@ export async function buildWasm(
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
     } catch (e) {
+      PvError.addError('pvFileRemoveWasm', e);
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;
