@@ -22,7 +22,6 @@ import {
 } from './utils';
 
 import { PvFile } from "./pv_file";
-import { PvError } from './pv_error';
 
 import { wasiSnapshotPreview1Emulator } from './wasi_snapshot';
 
@@ -34,13 +33,11 @@ export type pv_free_type = (ptr: number) => Promise<void>;
  *
  * @param memory Initialized WebAssembly memory object.
  * @param wasm The wasm file in base64 string or stream to public path (i.e. fetch("file.wasm")) to initialize.
- * @param pvError The PvError object to store error details.
  * @returns An object containing the exported functions from WASM.
  */
 export async function buildWasm(
   memory: WebAssembly.Memory,
-  wasm: string | Promise<Response>,
-  pvError?: PvError
+  wasm: string | Promise<Response>
 ): Promise<any> {
   const memoryBufferUint8 = new Uint8Array(memory.buffer);
   const memoryBufferInt32 = new Int32Array(memory.buffer);
@@ -99,54 +96,39 @@ export async function buildWasm(
 
     const headerObject = stringHeaderToObject(header);
 
-    let response: Response;
-    let responseText: string;
-    let statusCode: number;
+    const response = await fetchWithTimeout(
+      'https://' + serverName + endpoint,
+      {
+        method: httpMethod,
+        headers: headerObject,
+        body: body,
+      },
+      timeoutMs
+    );
+    const statusCode = response.status;
 
-    try {
-      response = await fetchWithTimeout(
-        'https://' + serverName + endpoint,
-        {
-          method: httpMethod,
-          headers: headerObject,
-          body: body,
-        },
-        timeoutMs
-      );
-      statusCode = response.status;
-    } catch (error) {
-      pvError?.addError('pvHttpsRequestWasm', error);
-      statusCode = 0;
+    const responseText = await response.text();
+
+    // eslint-disable-next-line
+    const responseAddress = await aligned_alloc(
+      Int8Array.BYTES_PER_ELEMENT,
+      (responseText.length + 1) * Int8Array.BYTES_PER_ELEMENT
+    );
+    if (responseAddress === 0) {
+      throw new Error('malloc failed: Cannot allocate memory');
     }
-    // @ts-ignore
-    if (response !== undefined) {
-      try {
-        responseText = await response.text();
-      } catch (error) {
-        responseText = '';
-        statusCode = 1;
-      }
-      // eslint-disable-next-line
-      const responseAddress = await aligned_alloc(
-        Int8Array.BYTES_PER_ELEMENT,
-        (responseText.length + 1) * Int8Array.BYTES_PER_ELEMENT
-      );
-      if (responseAddress === 0) {
-        throw new Error('malloc failed: Cannot allocate memory');
-      }
 
-      memoryBufferInt32[
-        responseSizeAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = responseText.length + 1;
-      memoryBufferInt32[
-        responseAddressAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = responseAddress;
+    memoryBufferInt32[
+      responseSizeAddress / Int32Array.BYTES_PER_ELEMENT
+    ] = responseText.length + 1;
+    memoryBufferInt32[
+      responseAddressAddress / Int32Array.BYTES_PER_ELEMENT
+    ] = responseAddress;
 
-      for (let i = 0; i < responseText.length; i++) {
-        memoryBufferUint8[responseAddress + i] = responseText.charCodeAt(i);
-      }
-      memoryBufferUint8[responseAddress + responseText.length] = 0;
+    for (let i = 0; i < responseText.length; i++) {
+      memoryBufferUint8[responseAddress + i] = responseText.charCodeAt(i);
     }
+    memoryBufferUint8[responseAddress + responseText.length] = 0;
 
     memoryBufferInt32[
       responseCodeAddress / Int32Array.BYTES_PER_ELEMENT
@@ -205,39 +187,22 @@ export async function buildWasm(
   ) {
     const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
     const mode = arrayBufferToStringAtIndex(memoryBufferUint8, modeAddress);
-    try {
-      const file = await open(path, mode);
-      PvFile.setPtr(fileAddress, file);
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
-    } catch (e) {
-      pvError?.addError('pvFileOpenWasm', e);
-      if (e.name === 'PvFileNotSupported') {
-        throw e;
-      }
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
-    }
+    const file = await open(path, mode);
+    PvFile.setPtr(fileAddress, file);
+    memoryBufferInt32[
+      statusAddress / Int32Array.BYTES_PER_ELEMENT
+    ] = 0;
   };
 
   const pvFileCloseWasm = async function(
     fileAddress: number,
     statusAddress: number
   ) {
-    try {
-      const file = await PvFile.getPtr(fileAddress);
-      await file.close();
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
-    } catch (e) {
-      pvError?.addError('pvFileCloseWasm', e);
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
-    }
+    const file = await PvFile.getPtr(fileAddress);
+    await file.close();
+    memoryBufferInt32[
+      statusAddress / Int32Array.BYTES_PER_ELEMENT
+    ] = 0;
   };
 
   const pvFileReadWasm = async function(
@@ -247,19 +212,12 @@ export async function buildWasm(
     count: number,
     numReadAddress: number
   ) {
-    try {
-      const file = await PvFile.getPtr(fileAddress);
-      const content = await file.read(size, count);
-      memoryBufferUint8.set(content, contentAddress);
-      memoryBufferInt32[
-        numReadAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = (content.length / size);
-    } catch (e) {
-      pvError?.addError('pvFileReadWasm', e);
-      memoryBufferInt32[
-        numReadAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
-    }
+    const file = await PvFile.getPtr(fileAddress);
+    const content = await file.read(size, count);
+    memoryBufferUint8.set(content, contentAddress);
+    memoryBufferInt32[
+      numReadAddress / Int32Array.BYTES_PER_ELEMENT
+    ] = (content.length / size);
   };
 
   const pvFileWriteWasm = async function(
@@ -269,20 +227,13 @@ export async function buildWasm(
     count: number,
     numWriteAddress: number,
   ) {
-    try {
-      const file = await PvFile.getPtr(fileAddress);
-      const content = new Uint8Array(size * count);
-      content.set(memoryBufferUint8.slice(contentAddress, contentAddress + (size * count)), 0);
-      await file.write(content);
-      memoryBufferInt32[
-        numWriteAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = (content.length / size);
-    } catch (e) {
-      pvError?.addError('pvFileWriteWasm', e);
-      memoryBufferInt32[
-        numWriteAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 1;
-    }
+    const file = await PvFile.getPtr(fileAddress);
+    const content = new Uint8Array(size * count);
+    content.set(memoryBufferUint8.slice(contentAddress, contentAddress + (size * count)), 0);
+    await file.write(content);
+    memoryBufferInt32[
+      numWriteAddress / Int32Array.BYTES_PER_ELEMENT
+    ] = (content.length / size);
   };
 
   const pvFileSeekWasm = function(
@@ -291,35 +242,21 @@ export async function buildWasm(
     whence: number,
     statusAddress: number
   ) {
-    try {
-      const file = PvFile.getPtr(fileAddress);
-      file.seek(offset, whence);
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
-    } catch (e) {
-      pvError?.addError('pvFileSeekWasm', e);
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
-    }
+    const file = PvFile.getPtr(fileAddress);
+    file.seek(offset, whence);
+    memoryBufferInt32[
+      statusAddress / Int32Array.BYTES_PER_ELEMENT
+    ] = 0;
   };
 
   const pvFileTellWasm = function(
     fileAddress: number,
     offsetAddress: number,
   ) {
-    try {
-      const file = PvFile.getPtr(fileAddress);
-      memoryBufferInt32[
-        offsetAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = file.tell();
-    } catch (e) {
-      pvError?.addError('pvFileTellWasm', e);
-      memoryBufferInt32[
-        offsetAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
-    }
+    const file = PvFile.getPtr(fileAddress);
+    memoryBufferInt32[
+      offsetAddress / Int32Array.BYTES_PER_ELEMENT
+    ] = file.tell();
   };
 
   const pvFileRemoveWasm = async function(
@@ -327,18 +264,11 @@ export async function buildWasm(
     statusAddress: number
   ) {
     const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
-    try {
-      const file = await open(path, "w");
-      await file.remove();
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
-    } catch (e) {
-      pvError?.addError('pvFileRemoveWasm', e);
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
-    }
+    const file = await open(path, "w");
+    await file.remove();
+    memoryBufferInt32[
+      statusAddress / Int32Array.BYTES_PER_ELEMENT
+    ] = 0;
   };
 
   const importObject = {
