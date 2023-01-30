@@ -1,6 +1,6 @@
 {
   "name": "@picovoice/web-utils",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "description": "Picovoice web utility functions",
   "author": "Picovoice",
   "license": "Apache-2.0",
@@ -19,7 +19,7 @@
     "watch": "rollup --config --watch"
   },
   "devDependencies": {
-    "@babel/core": "^7.16.12",
+    "@babel/core": "^7.20.12",
     "@babel/plugin-transform-runtime": "^7.16.10",
     "@babel/preset-env": "^7.16.11",
     "@babel/runtime": "^7.16.7",
