@@ -16,13 +16,16 @@ type PvErrorType = {
 
 
 export class PvError {
-  protected _maxNumErrors = 10;
-  protected _errors: PvErrorType[] = [];
+  private _maxNumErrors = 10;
+  private _errors: PvErrorType[] = [];
+  private _lastError: Error;
 
   /**
    * Store an error with a key and message.
    */
   public addError(key: string, error?: string | Error) {
+    this._lastError = (error instanceof Error) ? error : new Error(error);
+
     if (this._errors.length >= this._maxNumErrors) {
       this._errors.shift();
     }
@@ -54,6 +57,13 @@ export class PvError {
    */
   public getErrorString() {
     return this.getErrors().map(({key, message}) => `'${key}' failed with: ${message}.`).join('\n');
+  }
+
+  /**
+   * Returns the last error message added to the object.
+   */
+  public getLastError() {
+    return this._lastError;
   }
 
   /**

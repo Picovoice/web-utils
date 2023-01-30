@@ -115,7 +115,7 @@ export async function buildWasm(
       );
       statusCode = response.status;
     } catch (error) {
-      pvError?.addError('pvHttpsRequestWasm', error);
+      pvError?.addError('pvHttpsRequestWasm', `Failed to fetch: ${error}`);
       statusCode = 0;
     }
     // @ts-ignore
@@ -123,6 +123,7 @@ export async function buildWasm(
       try {
         responseText = await response.text();
       } catch (error) {
+        pvError?.addError('pvHttpsRequestWasm', `Failed to get response text: ${error}`);
         responseText = '';
         statusCode = 1;
       }
@@ -132,7 +133,7 @@ export async function buildWasm(
         (responseText.length + 1) * Int8Array.BYTES_PER_ELEMENT
       );
       if (responseAddress === 0) {
-        throw new Error('malloc failed: Cannot allocate memory');
+        pvError?.addError('pvHttpsRequestWasm', 'malloc failed: Cannot allocate memory');
       }
 
       memoryBufferInt32[
@@ -163,7 +164,7 @@ export async function buildWasm(
     );
 
     if (browserInfoAddress === 0) {
-      throw new Error('malloc failed: Cannot allocate memory');
+      pvError?.addError('pvGetBrowserInfo', 'malloc failed: Cannot allocate memory');
     }
 
     memoryBufferInt32[
@@ -185,7 +186,7 @@ export async function buildWasm(
     );
 
     if (originInfoAddress === 0) {
-      throw new Error('malloc failed: Cannot allocate memory');
+      pvError?.addError('originInfoAddress', 'malloc failed: Cannot allocate memory');
     }
 
     memoryBufferInt32[
@@ -213,9 +214,6 @@ export async function buildWasm(
       ] = 0;
     } catch (e) {
       pvError?.addError('pvFileOpenWasm', e);
-      if (e.name === 'PvFileNotSupported') {
-        throw e;
-      }
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;
