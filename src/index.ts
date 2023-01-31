@@ -28,6 +28,7 @@ import {
 } from './utils';
 
 import { PvFile } from './pv_file';
+import { PvError } from './pv_error';
 
 import { PvFileMem } from './pv_file_mem';
 
@@ -67,6 +68,7 @@ export {
   PvFile,
   PvFileIDB,
   PvFileMem,
+  PvError,
   // types
   PvModel,
 };
