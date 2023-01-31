@@ -133,7 +133,7 @@ export async function buildWasm(
         (responseText.length + 1) * Int8Array.BYTES_PER_ELEMENT
       );
       if (responseAddress === 0) {
-        pvError?.addError('pvHttpsRequestWasm', 'malloc failed: Cannot allocate memory');
+        throw new Error('malloc failed: Cannot allocate memory');
       }
 
       memoryBufferInt32[
@@ -164,7 +164,7 @@ export async function buildWasm(
     );
 
     if (browserInfoAddress === 0) {
-      pvError?.addError('pvGetBrowserInfo', 'malloc failed: Cannot allocate memory');
+      throw new Error('malloc failed: Cannot allocate memory');
     }
 
     memoryBufferInt32[
@@ -186,7 +186,7 @@ export async function buildWasm(
     );
 
     if (originInfoAddress === 0) {
-      pvError?.addError('originInfoAddress', 'malloc failed: Cannot allocate memory');
+      throw new Error('malloc failed: Cannot allocate memory');
     }
 
     memoryBufferInt32[
