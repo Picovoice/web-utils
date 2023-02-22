@@ -139,6 +139,18 @@ export async function open(path: string, mode: string): Promise<PvFile> {
   try {
     return await PvFileIDB.open(path, mode);
   } catch (e) {
+    if (e.name === 'IndexedDBNotSupported') {
+      // eslint-disable-next-line no-console
+      console.warn(
+        'IndexedDB is not supported. Fallback to in-memory storage.'
+      );
+    } else if (e.name !== 'FileNotExists') {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `Unable to access IndexedDB (${e.toString()}). Fallback to in-memory storage.`
+      );
+    }
+
     if (
       // @ts-ignore
       typeof WorkerGlobalScope !== 'undefined' &&
@@ -154,18 +166,6 @@ export async function open(path: string, mode: string): Promise<PvFile> {
       const error = new Error(`Failed to start PvFile: ${e.toString()}`);
       error.name = 'PvFileNotSupported';
       throw error;
-    }
-
-    if (e.name === 'IndexedDBNotSupported') {
-      // eslint-disable-next-line no-console
-      console.warn(
-        'IndexedDB is not supported. Fallback to in-memory storage.'
-      );
-    } else if (e.name !== 'FileNotExists') {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `Unable to access IndexedDB (${e.toString()}). Fallback to in-memory storage.`
-      );
     }
 
     return PvFileMem.open(path, mode);
