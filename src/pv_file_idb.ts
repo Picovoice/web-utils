@@ -88,15 +88,17 @@ export class PvFileIDB extends PvFile {
     return new Promise(async(resolve, reject) => {
       try {
         const db = await getDB();
-        const dbMode = mode.includes('r') ? "readonly" : "readwrite";
-        const req = db.transaction(PV_FILE_STORE, dbMode).objectStore(PV_FILE_STORE).get(path);
+        const req = db.transaction(PV_FILE_STORE, "readwrite").objectStore(PV_FILE_STORE).get(path);
         req.onerror = () => {
           reject(req.error);
         };
         req.onsuccess = () => {
           const meta = req.result;
+          const dbMode = mode.includes('r') ? "readonly" : "readwrite";
           if (meta === undefined && dbMode === "readonly") {
-            reject(new Error(`'${path}' doesn't exist.`));
+            const error = new Error(`'${path}' doesn't exist.`);
+            error.name = "FileNotExists";
+            reject(error);
             return;
           }
           const fileIDB = new PvFileIDB(path, meta, db, dbMode);

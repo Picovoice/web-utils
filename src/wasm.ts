@@ -213,7 +213,9 @@ export async function buildWasm(
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
     } catch (e) {
-      pvError?.addError('pvFileOpenWasm', e);
+      if (e.name !== "FileNotExists") {
+        pvError?.addError('pvFileOpenWasm', e);
+      }
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = -1;

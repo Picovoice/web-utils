@@ -32,7 +32,9 @@ export class PvFileMem extends PvFile {
     const file = PvFileMem._memFiles.get(path);
     const dbMode = mode.includes('r') ? "readonly" : "readwrite";
     if ((file === undefined) && (dbMode === "readonly")) {
-      throw new Error(`'${path}' doesn't exist.`);
+      const error = new Error(`'${path}' doesn't exist.`);
+      error.name = "FileNotExists";
+      throw error;
     }
     const fileMem = new PvFileMem(path, undefined, undefined, dbMode);
     if (mode.includes('a')) {
