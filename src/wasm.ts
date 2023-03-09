@@ -133,7 +133,7 @@ export async function buildWasm(
         (responseText.length + 1) * Int8Array.BYTES_PER_ELEMENT
       );
       if (responseAddress === 0) {
-        pvError?.addError('pvHttpsRequestWasm', "malloc failed: Cannot allocate memory");
+        pvError?.addError('pvMallocError', "pvHttpsRequestWasm: cannot allocate memory for response");
         memoryBufferInt32[
           responseAddressAddress / Int32Array.BYTES_PER_ELEMENT
         ] = 0;
@@ -168,7 +168,7 @@ export async function buildWasm(
     );
 
     if (browserInfoAddress === 0) {
-      pvError?.addError('pvGetBrowserInfo', "malloc failed: Cannot allocate memory");
+      pvError?.addError('pvMallocError', "pvGetBrowserInfo: cannot allocate memory for browser info");
       memoryBufferInt32[
         browserInfoAddressAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
@@ -194,7 +194,7 @@ export async function buildWasm(
     );
 
     if (originInfoAddress === 0) {
-      pvError?.addError('pvGetOriginInfo', "malloc failed: Cannot allocate memory");
+      pvError?.addError('pvMallocError', "pvGetOriginInfo: cannot allocate memory for origin info");
       memoryBufferInt32[
         originInfoAddressAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
