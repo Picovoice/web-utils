@@ -116,42 +116,40 @@ export async function buildWasm(
       statusCode = response.status;
     } catch (error) {
       pvError?.addError('pvHttpsRequestWasm', `Failed to fetch: ${error}`);
-      statusCode = 0;
+      return;
     }
-    // @ts-ignore
-    if (response !== undefined) {
-      try {
-        responseText = await response.text();
-      } catch (error) {
-        pvError?.addError('pvHttpsRequestWasm', `Failed to get response text: ${error}`);
-        responseText = '';
-        statusCode = 1;
-      }
-      // eslint-disable-next-line
-      const responseAddress = await aligned_alloc(
-        Int8Array.BYTES_PER_ELEMENT,
-        (responseText.length + 1) * Int8Array.BYTES_PER_ELEMENT
-      );
-      if (responseAddress === 0) {
-        pvError?.addError('pvMallocError', "pvHttpsRequestWasm: cannot allocate memory for response");
-        memoryBufferInt32[
-          responseAddressAddress / Int32Array.BYTES_PER_ELEMENT
-        ] = 0;
-        return;
-      }
 
-      memoryBufferInt32[
-        responseSizeAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = responseText.length + 1;
+    try {
+      responseText = await response.text();
+    } catch (error) {
+      pvError?.addError('pvHttpsRequestWasm', `Failed to get response text: ${error}`);
+      return;
+    }
+
+    // eslint-disable-next-line
+    const responseAddress = await aligned_alloc(
+      Int8Array.BYTES_PER_ELEMENT,
+      (responseText.length + 1) * Int8Array.BYTES_PER_ELEMENT
+    );
+    if (responseAddress === 0) {
+      pvError?.addError('pvMallocError', "pvHttpsRequestWasm: cannot allocate memory for response");
       memoryBufferInt32[
         responseAddressAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = responseAddress;
-
-      for (let i = 0; i < responseText.length; i++) {
-        memoryBufferUint8[responseAddress + i] = responseText.charCodeAt(i);
-      }
-      memoryBufferUint8[responseAddress + responseText.length] = 0;
+      ] = 0;
+      return;
     }
+
+    memoryBufferInt32[
+      responseSizeAddress / Int32Array.BYTES_PER_ELEMENT
+    ] = responseText.length + 1;
+    memoryBufferInt32[
+      responseAddressAddress / Int32Array.BYTES_PER_ELEMENT
+    ] = responseAddress;
+
+    for (let i = 0; i < responseText.length; i++) {
+      memoryBufferUint8[responseAddress + i] = responseText.charCodeAt(i);
+    }
+    memoryBufferUint8[responseAddress + responseText.length] = 0;
 
     memoryBufferInt32[
       responseCodeAddress / Int32Array.BYTES_PER_ELEMENT
