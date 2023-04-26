@@ -1,5 +1,5 @@
 /*
-  Copyright 2022 Picovoice Inc.
+  Copyright 2022-2023 Picovoice Inc.
 
   You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
   file accompanying this source.
@@ -8,8 +8,6 @@
   an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
   specific language governing permissions and limitations under the License.
 */
-
-/// <reference types="cypress" />
 
 import { fromPublicDirectory, open } from '../src';
 
@@ -29,8 +27,8 @@ describe('PvFile', () => {
     try {
       const file = await open(path, 'w');
       await file.write(basicData);
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 
@@ -39,8 +37,8 @@ describe('PvFile', () => {
       const file = await open(path, 'r');
       const exists = file.exists();
       expect(exists).eq(true);
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 
@@ -48,9 +46,9 @@ describe('PvFile', () => {
     try {
       const file = await open(path, 'w');
       await file.write(basicData, 2);
-      expect(file.meta.version).eq(2);
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+      expect(file.meta?.version).eq(2);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 
@@ -60,8 +58,8 @@ describe('PvFile', () => {
       file.seek(512, 0);
       const data = await file.read(1, 512);
       expect(data).length(512);
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 
@@ -71,8 +69,8 @@ describe('PvFile', () => {
       file.seek(0, 2);
       const offset = file.tell();
       expect(offset).eq(1024);
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 
@@ -82,8 +80,8 @@ describe('PvFile', () => {
       const data = await file.read(1, 1024);
       expect(data).length(1024);
       expect(data).to.deep.eq(basicData);
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 
@@ -93,8 +91,8 @@ describe('PvFile', () => {
       const data = await file.read(3, 999);
       expect(data).length(1023);
       expect(data).to.deep.eq(basicData.slice(0, 1024 - (1024 % 3)));
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 
@@ -104,8 +102,8 @@ describe('PvFile', () => {
       await file.remove();
       const exists = file.exists();
       expect(exists).eq(false);
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 
@@ -144,8 +142,8 @@ describe('PvFile', () => {
       const remaining = await file.read(1, fileSize);
       expect(remaining).length(fileSize - readAcc - seekAcc);
       expect(remaining).to.deep.eq(fullData.slice(readAcc + seekAcc));
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 
@@ -155,8 +153,8 @@ describe('PvFile', () => {
       await file.write(basicData);
       await file.write(basicData);
       expect(file.tell()).eq(basicData.length * 2);
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 
@@ -165,8 +163,8 @@ describe('PvFile', () => {
       const file = await open(path, 'a');
       await file.write(basicData);
       expect(file.tell()).eq(basicData.length * 3);
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 
@@ -177,8 +175,8 @@ describe('PvFile', () => {
       expect(data.length).eq(basicData.length / 2);
       await file.write(basicData);
       expect(file.tell()).eq(basicData.length + basicData.length / 2);
-    } catch (e) {
-      expect(e).eq(undefined, e?.message);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
     }
   });
 });
@@ -198,6 +196,7 @@ describe('PvModel fetch', () => {
     }
     expect(error).not.eq(null);
   });
+
   it('Invalid num retries', async () => {
     const publicPath = 'https://public.com/path.pv';
     cy.intercept('GET', publicPath, {
@@ -212,6 +211,7 @@ describe('PvModel fetch', () => {
     }
     expect(error).not.eq(null);
   });
+
   it('Fetch fail after multiple retries', async () => {
     const publicPath = 'https://public.com/path.pv';
     cy.intercept('GET', publicPath, {

@@ -12,16 +12,16 @@ module.exports = {
     ecmaVersion: 2018
   },
 
-  ignorePatterns: ['**/*.js', 'node_modules', 'dist', 'src/plugins/*.ts'],
+  ignorePatterns: ['**/*.js', 'node_modules', 'dist'],
   overrides: [
     {
-      files: ['src/**/*.ts', 'test/**/*.ts'],
+      files: ['src/**/*.ts'],
       extends: ['plugin:@typescript-eslint/recommended'],
       rules: {
         '@typescript-eslint/no-parameter-properties': 2,
         '@typescript-eslint/no-explicit-any': 0,
         '@typescript-eslint/no-var-requires': 2,
-        '@typescript-eslint/no-non-null-assertion': 2,
+        '@typescript-eslint/no-non-null-assertion': 0,
         '@typescript-eslint/no-use-before-define': 2,
         '@typescript-eslint/camelcase': 0,
         '@typescript-eslint/no-empty-interface': 2,
@@ -34,7 +34,16 @@ module.exports = {
             ignoreParameters: true,
             ignoreProperties: true
           }
-        ]
+        ],
+        '@typescript-eslint/no-shadow': 2
+      }
+    },
+    {
+      files: ['test/**/*.ts', 'cypress/**/*.ts'],
+      extends: ['plugin:cypress/recommended'],
+      rules: {
+        'no-unused-expressions': 0,
+        'no-unused-vars': 0
       }
     }
   ],
@@ -135,7 +144,7 @@ module.exports = {
     // disallow use of arguments.caller or arguments.callee
     'no-caller': 2,
     // disallow lexical declarations in case clauses
-    'no-case-declarations': 2,
+    'no-case-declarations': 0,
     // disallow division operators explicitly at beginning of regular expression
     'no-div-regex': 2,
     // disallow else after a return in an if
@@ -249,7 +258,7 @@ module.exports = {
     // disallow shadowing of names such as arguments
     'no-shadow-restricted-names': 2,
     // disallow declaration of variables already declared in the outer scope
-    'no-shadow': 2,
+    'no-shadow': 0,
     // disallow use of undefined when initializing variables
     'no-undef-init': 0,
     // disallow use of undeclared variables unless mentioned in a /*global */ block
@@ -373,7 +382,7 @@ module.exports = {
     // disallow the use of Boolean literals in conditional expressions
     'no-unneeded-ternary': 0,
     // require or disallow padding inside curly braces
-    'object-curly-spacing': 0,
+    'object-curly-spacing': ["error", "always"],
     // allow just one var statement per function
     'one-var': [1, 'never'],
     // require assignment operator shorthand where possible or prohibit it entirely

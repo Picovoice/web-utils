@@ -1,5 +1,5 @@
 /*
-  Copyright 2022 Picovoice Inc.
+  Copyright 2022-2023 Picovoice Inc.
 
   You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
   file accompanying this source.
@@ -19,7 +19,7 @@ export class PvFileMem extends PvFile {
   private static _memFiles = new Map<string, Uint8Array>();
 
   private _pos = 0;
-  private readonly _mode: IDBTransactionMode;
+  private readonly _mode: IDBTransactionMode | undefined;
 
   protected constructor(path: string, meta?: PvFileMeta, db?: IDBDatabase, mode?: IDBTransactionMode) {
     super();
@@ -112,7 +112,6 @@ export class PvFileMem extends PvFile {
 
   public async remove(): Promise<void> {
     PvFileMem._memFiles.delete(this._path);
-    this._file = undefined;
     this._pos = 0;
   }
 
@@ -125,7 +124,7 @@ export class PvFileMem extends PvFile {
   }
 
   private get _file() {
-    return PvFileMem._memFiles.get(this._path);
+    return PvFileMem._memFiles.get(this._path)!;
   }
 
   private set _file(content: Uint8Array) {

@@ -222,7 +222,7 @@ export async function buildWasm(
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
-    } catch (e) {
+    } catch (e: any) {
       if (e.name !== "FileNotExists") {
         pvError?.addError('pvFileOpenWasm', e);
       }
@@ -242,7 +242,7 @@ export async function buildWasm(
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
-    } catch (e) {
+    } catch (e: any) {
       pvError?.addError('pvFileCloseWasm', e);
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
@@ -264,7 +264,7 @@ export async function buildWasm(
       memoryBufferInt32[
         numReadAddress / Int32Array.BYTES_PER_ELEMENT
       ] = (content.length / size);
-    } catch (e) {
+    } catch (e: any) {
       pvError?.addError('pvFileReadWasm', e);
       memoryBufferInt32[
         numReadAddress / Int32Array.BYTES_PER_ELEMENT
@@ -287,7 +287,7 @@ export async function buildWasm(
       memoryBufferInt32[
         numWriteAddress / Int32Array.BYTES_PER_ELEMENT
       ] = (content.length / size);
-    } catch (e) {
+    } catch (e: any) {
       pvError?.addError('pvFileWriteWasm', e);
       memoryBufferInt32[
         numWriteAddress / Int32Array.BYTES_PER_ELEMENT
@@ -307,7 +307,7 @@ export async function buildWasm(
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
-    } catch (e) {
+    } catch (e: any) {
       pvError?.addError('pvFileSeekWasm', e);
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
@@ -324,7 +324,7 @@ export async function buildWasm(
       memoryBufferInt32[
         offsetAddress / Int32Array.BYTES_PER_ELEMENT
       ] = file.tell();
-    } catch (e) {
+    } catch (e: any) {
       pvError?.addError('pvFileTellWasm', e);
       memoryBufferInt32[
         offsetAddress / Int32Array.BYTES_PER_ELEMENT
@@ -343,7 +343,7 @@ export async function buildWasm(
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT
       ] = 0;
-    } catch (e) {
+    } catch (e: any) {
       pvError?.addError('pvFileRemoveWasm', e);
       memoryBufferInt32[
         statusAddress / Int32Array.BYTES_PER_ELEMENT

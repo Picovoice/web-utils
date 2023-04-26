@@ -1,20 +1,21 @@
 {
-    "compilerOptions": {
-      "allowJs": false,
-      "allowSyntheticDefaultImports": true,
-      "downlevelIteration": true,
-      "isolatedModules": false,
-      "lib": ["esnext", "dom"],
-      "module": "esnext",
-      "moduleResolution": "node",
-      "noEmit": false,
-      "outDir": "./dist",
-      "removeComments": false,
-      "resolveJsonModule": true,
-      "sourceMap": true,
-      "strict": false,
-      "target": "esnext",
-      "types": [],
-    },
-    "exclude": ["node_modules", "dist", "test", "cypress"]
-  }
+  "compilerOptions": {
+    "allowJs": false,
+    "allowSyntheticDefaultImports": true,
+    "downlevelIteration": true,
+    "isolatedModules": false,
+    "lib": ["esnext", "dom", "es6"],
+    "module": "esnext",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": "./dist",
+    "removeComments": false,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "strict": true,
+    "target": "es6",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["node_modules"]
+}
