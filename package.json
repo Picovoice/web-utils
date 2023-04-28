@@ -15,7 +15,7 @@
     "lint": "eslint . --ext .js,.ts",
     "prepack": "npm-run-all build",
     "start": "cross-env TARGET='debug' rollup --config --watch",
-    "setup-test": "cmake -S lib -B lib/build && cmake --build lib/build",
+    "setup-test": "cmake -DCMAKE_BUILD_TYPE=Release -S lib -B lib/build && cmake --build lib/build",
     "test": "cypress run --browser chrome",
     "watch": "rollup --config --watch"
   },

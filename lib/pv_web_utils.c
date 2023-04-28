@@ -27,6 +27,7 @@ extern void pv_https_request_wasm(
         const char *endpoint,
         const char *header,
         const char *body,
+        int32_t timeout_msec,
         void **response,
         size_t *response_size,
         int32_t *response_code);
@@ -35,7 +36,7 @@ extern void pv_get_origin_info(char **origin_info);
 extern void pv_file_open_wasm(void *f, const char *path, const char *mode, int32_t *status);
 extern void pv_file_close_wasm(void *f, int32_t *status);
 extern void pv_file_write_wasm(void *f, const void *content, size_t size, size_t count, size_t *num_write);
-extern void pv_file_read_wasm(void *f, void *content, size_t size, size_t count, size_t *num_read);
+extern void pv_file_read_wasm(void *f, void *content, size_t size, size_t count, int32_t *num_read);
 extern void pv_file_seek_wasm(void *f, long int offset, int whence, int32_t *status);
 extern void pv_file_tell_wasm(void *f, long *offset);
 extern void pv_file_remove_wasm(const char *path, int32_t *status);
@@ -70,6 +71,7 @@ PV_API pv_web_utils_status_t pv_web_utils_test_https_request(void) {
             "/test_route",
             "",
             "",
+            7000,
             (void **) &response,
             &response_size,
             &response_code);
@@ -161,7 +163,7 @@ PV_API pv_web_utils_status_t pv_web_utils_test_file_read(void) {
     }
 
     char content[sizeof (test_content)];
-    size_t num_read = -1;
+    int32_t num_read = -1;
     pv_file_read_wasm(file, content, sizeof (char), sizeof (test_content), &num_read);
 
     if (num_read != sizeof (test_content)) {
@@ -183,7 +185,7 @@ PV_API pv_web_utils_status_t pv_test_utils_test_file_close(void) {
         return FAILURE;
     }
 
-    size_t num_read = -1;
+    int32_t num_read = -1;
     char content[1];
     pv_file_read_wasm(file, content, sizeof (char), 1, &num_read);
 
