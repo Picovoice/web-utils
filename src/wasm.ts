@@ -99,6 +99,18 @@ export async function buildWasm(
 
     const headerObject = stringHeaderToObject(header);
 
+    const options: Record<string, any> = {
+      method: httpMethod
+    };
+
+    if (body.length > 0) {
+      options.body = body;
+    }
+
+    if (Object.keys(headerObject).length > 0) {
+      options.headers = headerObject;
+    }
+
     let response: Response;
     let responseText: string;
     let statusCode: number;
@@ -106,11 +118,7 @@ export async function buildWasm(
     try {
       response = await fetchWithTimeout(
         'https://' + serverName + endpoint,
-        {
-          method: httpMethod,
-          headers: headerObject,
-          body: body,
-        },
+        options,
         timeoutMs
       );
       statusCode = response.status;

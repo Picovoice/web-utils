@@ -43,7 +43,8 @@ module.exports = {
       extends: ['plugin:cypress/recommended'],
       rules: {
         'no-unused-expressions': 0,
-        'no-unused-vars': 0
+        'no-unused-vars': 0,
+        'cypress/no-async-tests': 0
       }
     }
   ],
