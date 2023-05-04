@@ -3,4 +3,6 @@ node_modules
 .DS_Store
 cypress
 test
-cypress.json
+cypress.config.ts
+lib
+.github

@@ -107,7 +107,7 @@ export class PvFileIDB extends PvFile {
           }
           resolve(fileIDB);
         };
-      } catch (e) {
+      } catch (e: any) {
         if (e.name === "InvalidStateError") {
           const error = new Error("IndexedDB is not supported");
           error.name = "IndexedDBNotSupported";
@@ -151,13 +151,13 @@ export class PvFileIDB extends PvFile {
 
       let copied = 0;
 
-      const maxToCopy = Math.min(size * count, this._meta.size);
+      const maxToCopy = Math.min(size * count, this._meta!.size);
       const totalElems = maxToCopy - (maxToCopy % size);
       const buffer = new Uint8Array(totalElems);
 
       const keyRange = IDBKeyRange.bound(
         `${this._path}-${PvFileIDB.createPage(this._pagePtr)}`,
-        `${this._path}-${PvFileIDB.createPage(this._meta.numPages)}`
+        `${this._path}-${PvFileIDB.createPage(this._meta!.numPages)}`
       );
 
       const store = this._store;
@@ -195,7 +195,7 @@ export class PvFileIDB extends PvFile {
    * @param content The bytes to save.
    * @param version Version of the file.
    */
-  public async write(content: Uint8Array, version = 1): Promise<void> {
+  public async write(content: Uint8Array, version: any = 1): Promise<void> {
     return new Promise(async (resolve, reject) => {
       if (this._mode === "readonly") {
         reject(new Error("Instance is readonly mode only."));
@@ -239,10 +239,10 @@ export class PvFileIDB extends PvFile {
           `${this._path}-${PvFileIDB.createPage(this._pagePtr + i)}`);
       }
 
-      if ((this.exists()) && (newMeta.numPages < this._meta.numPages)) {
+      if ((this.exists()) && (newMeta.numPages < this._meta!.numPages)) {
         const keyRange = IDBKeyRange.bound(
           `${this._path}-${PvFileIDB.createPage(newMeta.numPages)}`,
-          `${this._path}-${PvFileIDB.createPage(this._meta.numPages)}`,
+          `${this._path}-${PvFileIDB.createPage(this._meta!.numPages)}`,
           true);
         store.delete(keyRange);
       }
@@ -280,12 +280,12 @@ export class PvFileIDB extends PvFile {
 
     let newOffset;
     if (whence === 0) {
-      newOffset = Math.min(offset, this._meta.size);
+      newOffset = Math.min(offset, this._meta!.size);
     } else if (whence === 1) {
       const currentOffset = this._pageSize * this._pagePtr + this._pageOffset;
-      newOffset = Math.min(currentOffset + offset, this._meta.size);
+      newOffset = Math.min(currentOffset + offset, this._meta!.size);
     } else if (whence === 2) {
-      newOffset = Math.min(this._meta.size + offset, this._meta.size);
+      newOffset = Math.min(this._meta!.size + offset, this._meta!.size);
     } else {
       throw new Error(`Invalid operation: ${whence}.`);
     }
@@ -309,7 +309,7 @@ export class PvFileIDB extends PvFile {
    */
   public async remove(): Promise<void> {
     return new Promise(async (resolve, reject) => {
-      const numPages = this._meta.numPages;
+      const numPages = this._meta!.numPages;
       const keyRange = IDBKeyRange.bound(this._path, `${this._path}-${PvFileIDB.createPage(numPages)}`);
       const store = this._store;
 
@@ -337,7 +337,7 @@ export class PvFileIDB extends PvFile {
    * Checks if the current stream is EOF.
    */
   protected get _isEOF() {
-    return (this._pagePtr >= (this._meta.numPages - 1)) && (this._pageOffset >= (this._meta.size % this._pageSize));
+    return (this._pagePtr >= (this._meta!.numPages - 1)) && (this._pageOffset >= (this._meta!.size % this._pageSize));
   }
 
   /**

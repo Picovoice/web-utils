@@ -1,5 +1,5 @@
 /*
-  Copyright 2022 Picovoice Inc.
+  Copyright 2022-2023 Picovoice Inc.
 
   You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
   file accompanying this source.
@@ -25,7 +25,7 @@ export type PvFileMeta = {
  */
 export abstract class PvFile {
   protected static _filePtrs = new Map<number, PvFile>();
-  protected _path: string;
+  protected _path: string = '';
   protected _meta: PvFileMeta | undefined;
 
   /**
@@ -61,7 +61,10 @@ export abstract class PvFile {
    * @returns BasePvFile returns the current file instance related to ptr.
    */
   public static getPtr(ptr: number): PvFile {
-    return PvFile._filePtrs.get(ptr);
+    if (PvFile._filePtrs.has(ptr)) {
+      return PvFile._filePtrs.get(ptr)!;
+    }
+    throw new Error('File instance not found.');
   }
 
   /**

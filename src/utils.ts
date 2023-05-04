@@ -138,7 +138,7 @@ export function isAccessKeyValid(accessKey: string): boolean {
 export async function open(path: string, mode: string): Promise<PvFile> {
   try {
     return await PvFileIDB.open(path, mode);
-  } catch (e) {
+  } catch (e: any) {
     if (e.name === 'IndexedDBNotSupported') {
       // eslint-disable-next-line no-console
       console.warn(
@@ -186,7 +186,7 @@ export async function fromBase64(
   if (
     forceWrite ||
     pvFile.meta === undefined ||
-    version > pvFile.meta.version
+    version > pvFile.meta.version!
   ) {
     await pvFile.write(base64ToUint8Array(modelBase64), version);
   }
@@ -210,7 +210,7 @@ export async function fromPublicDirectory(
   if (
     forceWrite ||
     pvFile.meta === undefined ||
-    version > pvFile.meta.version
+    version > pvFile.meta.version!
   ) {
     if (numFetchReties < 0) {
       throw Error('numFetchRetries must be a positive number');
@@ -223,7 +223,7 @@ export async function fromPublicDirectory(
       });
 
     let numAttemptsLeft: number = numFetchReties + 1;
-    let error: Error = null;
+    let error: Error | null = null;
     while (numAttemptsLeft > 0) {
       error = null;
       try {

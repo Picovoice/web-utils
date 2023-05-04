@@ -18,7 +18,7 @@ type PvErrorType = {
 export class PvError {
   private _maxNumErrors = 10;
   private _errors: PvErrorType[] = [];
-  private _lastError: Error;
+  private _lastError: Error = new Error('null');
 
   /**
    * Store an error with a key and message.
@@ -56,7 +56,7 @@ export class PvError {
    * Get errors formatted into a string.
    */
   public getErrorString() {
-    return this.getErrors().map(({key, message}) => `'${key}' failed with: ${message}.`).join('\n');
+    return this.getErrors().map(({ key, message }) => `'${key}' failed with: ${message}.`).join('\n');
   }
 
   /**
