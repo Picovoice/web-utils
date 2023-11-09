@@ -83,6 +83,11 @@ export class PvFileMem extends PvFile {
     if (!this.exists() && this._mode === "readonly") {
       throw new Error(`'${this._path}' doesn't exist.`);
     }
+    if (!this.exists()) {
+      // This is valid in ISO C but not supported by this current implementation
+      throw new Error(`'${this._path}' doesn't exist.`);
+    }
+
     if (offset < 0) {
       const err = new Error(`EOF`);
       err.name = "EndOfFile";
@@ -111,6 +116,10 @@ export class PvFileMem extends PvFile {
   }
 
   public async remove(): Promise<void> {
+    if (!this.exists()) {
+      throw new Error("ENOENT");
+    }
+
     PvFileMem._memFiles.delete(this._path);
     this._pos = 0;
   }
