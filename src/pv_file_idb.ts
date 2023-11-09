@@ -1,5 +1,5 @@
 /*
-  Copyright 2022 Picovoice Inc.
+  Copyright 2022-2023 Picovoice Inc.
 
   You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
   file accompanying this source.
@@ -271,6 +271,10 @@ export class PvFileIDB extends PvFile {
     if (!this.exists() && this._mode === "readonly") {
       throw new Error(`'${this._path}' doesn't exist.`);
     }
+    if (!this.exists()) {
+      // This is valid in ISO C but not supported by this current implementation
+      throw new Error(`'${this._path}' doesn't exist.`);
+    }
 
     if (offset < 0) {
       const err = new Error(`EOF`);
@@ -309,6 +313,11 @@ export class PvFileIDB extends PvFile {
    */
   public async remove(): Promise<void> {
     return new Promise(async (resolve, reject) => {
+      if (!this.exists()) {
+        reject(new Error("ENOENT"));
+        return;
+      }
+
       const numPages = this._meta!.numPages;
       const keyRange = IDBKeyRange.bound(this._path, `${this._path}-${PvFileIDB.createPage(numPages)}`);
       const store = this._store;
