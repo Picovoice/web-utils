@@ -135,6 +135,16 @@ const initXpu = (
       return buf;
     }
 
+    function makeTexture(width: number, height: number, data: ArrayBufferView) {
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, width, height, 0, gl.RED, gl.FLOAT, data);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      return texture;
+    }
+
     function makeBufferAndSetIAttribute(data: Uint8Array, loc: number) {
       const buf = makeBuffer(data);
       // setup our attributes to tell WebGL how to pull
@@ -149,8 +159,12 @@ const initXpu = (
       );
     }
 
-    function makeBufferAndSetAttribute(data: Float32Array, loc: number) {
-      const buf = makeBuffer(data);
+    function makeBufferAndSetAttribute(data: Float32Array, loc: number, size: number) {
+      const newData = new Float32Array(size);
+      for (let i = 0; i < size; i += data.length) {
+        newData.set(data, i);
+      }
+      const buf = makeBuffer(newData);
       // setup our attributes to tell WebGL how to pull
       // the data from the buffer above to the attribute
       gl.enableVertexAttribArray(loc);
@@ -178,7 +192,8 @@ const initXpu = (
 
     // put data in buffers
     const aBuffer = makeBufferAndSetIAttribute(a, aLoc);
-    const bBuffer = makeBufferAndSetAttribute(b, bLoc);
+    const size = a.length * 2;
+    const bBuffer = makeBufferAndSetAttribute(b, bLoc, size);
 
     // Create and fill out a transform feedback
     const tf = gl.createTransformFeedback();
@@ -209,7 +224,7 @@ const initXpu = (
 
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
     gl.beginTransformFeedback(gl.POINTS);
-    gl.drawArrays(gl.POINTS, 0, 4);
+    gl.drawArrays(gl.POINTS, 0, a.length);
     gl.endTransformFeedback();
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
 
