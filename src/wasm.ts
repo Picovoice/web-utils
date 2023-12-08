@@ -21,6 +21,8 @@ import {
   open
 } from './utils';
 
+import { initXpu } from './pv_xpu';
+
 import { PvFile } from "./pv_file";
 import { PvError } from './pv_error';
 
@@ -359,6 +361,8 @@ export async function buildWasm(
     }
   };
 
+  const xpuImports = initXpu(memory, wasm);
+
   const importObject = {
     // eslint-disable-next-line camelcase
     wasi_snapshot_preview1: wasiSnapshotPreview1Emulator,
@@ -376,7 +380,8 @@ export async function buildWasm(
       pv_file_write_wasm: pvFileWriteWasm,
       pv_file_seek_wasm: pvFileSeekWasm,
       pv_file_tell_wasm: pvFileTellWasm,
-      pv_file_remove_wasm: pvFileRemoveWasm
+      pv_file_remove_wasm: pvFileRemoveWasm,
+      ...xpuImports
     },
   };
 
