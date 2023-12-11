@@ -21,22 +21,77 @@ const buffers = new Map<number, {
   bufferAddress: number
 }>;
 
+// const vs = `#version 300 es
+// in uint a_matrix;
+//
+// uniform sampler2D u_vector;
+// uniform int vectorLength;
+//
+// out float result;
+//
+// vec4 getAs1D(sampler2D tex, ivec2 dimensions, int index) {
+//   int y = index / dimensions.x;
+//   int x = index % dimensions.x;
+//   return texelFetch(tex, ivec2(x, y), 0);
+// }
+//
+// void main() {
+//   ivec2 dimensions = textureSize(u_vector, 0);
+//
+//   uint low_int = uint(0x0F) & a_matrix;
+//   uint high_int = uint(0x0F) & (a_matrix >> 4);
+//
+//   float total = 0.0;
+//   for (int i = 0; i < vectorLength / 2; i++) {
+//     float vectorValue0 = getAs1D(u_vector, dimensions, i * 2).x;
+//     float vectorValue1 = getAs1D(u_vector, dimensions, i * 2 + 1).x;
+//
+//     total += (float(low_int) * vectorValue0) + (float(high_int) * vectorValue1);
+//   }
+//   result = total;
+// }
+// `;
+
 const vs = `#version 300 es
-in uint a;
-in vec2 b;
-
-out float result;
-
 void main() {
-  uint low_int = uint(0x0F) & a;
-  uint high_int = uint(0x0F) & (a >> 4);
-  
-  result = (float(low_int) * b[0]) + (float(high_int) * b[1]);
 }
 `;
 
 const fs = `#version 300 es
+precision mediump float;
+
+uniform sampler2D u_matrix;
+uniform sampler2D u_vector;
+uniform int m;
+uniform int n;
+
+out vec4 result;
+
+vec4 getAs1D(sampler2D tex, ivec2 dimensions, int index) {
+  int y = index / dimensions.x;
+  int x = index % dimensions.x;
+  return texelFetch(tex, ivec2(x, y), 0);
+}
+
 void main() {
+  ivec2 matrix_dimensions = textureSize(u_matrix, 0);
+  ivec2 vector_dimensions = textureSize(u_vector, 0);
+
+  int n_real = n / 2;
+
+  int i = int(gl_FragCoord.y);
+  float sum = 1.0;
+
+  for (int j = 0; j < n_real; j++) {
+    int matrix_index = (i * n_real) + j;
+    float matrixValue = getAs1D(u_vector, matrix_dimensions, matrix_index).x;
+    
+    float vectorValue0 = getAs1D(u_vector, vector_dimensions, i * 2).x;
+    float vectorValue1 = getAs1D(u_vector, vector_dimensions, i * 2 + 1).x;
+    sum += matrixValue * vectorValue0;
+  }
+
+  fragColor = vec4(sum, 0.0, 0.0, 1.0);
 }
 `;
 
@@ -44,7 +99,6 @@ const initXpu = (
   memory: WebAssembly.Memory,
   wasm: string | Promise<Response>
 ) => {
-
   const setStatus = (statusAddress: number, value: number) => {
     const memoryBufferInt32 = new Int32Array(memory.buffer);
     memoryBufferInt32[
@@ -95,88 +149,6 @@ const initXpu = (
     }
     const { gl } = obj;
 
-    function createShader(type: number, src: string) {
-      const shader = gl.createShader(type)!;
-      gl.shaderSource(shader, src);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        throw new Error(gl.getShaderInfoLog(shader)!);
-      }
-      return shader;
-    }
-
-    const vShader = createShader(gl.VERTEX_SHADER, vs);
-    const fShader = createShader(gl.FRAGMENT_SHADER, fs);
-
-    const program = gl.createProgram()!;
-    gl.attachShader(program, vShader);
-    gl.attachShader(program, fShader);
-    gl.transformFeedbackVaryings(
-      program,
-      ['result'],
-      gl.SEPARATE_ATTRIBS,
-    );
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      throw new Error(gl.getProgramParameter(program, gl.LINK_STATUS)!);
-    }
-
-    // Create a vertex array object (attribute state)
-    const vao = gl.createVertexArray();
-    gl.bindVertexArray(vao);
-
-    const aLoc = gl.getAttribLocation(program, 'a');
-    const bLoc = gl.getAttribLocation(program, 'b');
-
-    function makeBuffer(sizeOrData: any, usage: number = gl.STATIC_DRAW) {
-      const buf = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-      gl.bufferData(gl.ARRAY_BUFFER, sizeOrData, usage);
-      return buf;
-    }
-
-    function makeTexture(width: number, height: number, data: ArrayBufferView) {
-      const texture = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, width, height, 0, gl.RED, gl.FLOAT, data);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.bindTexture(gl.TEXTURE_2D, null);
-      return texture;
-    }
-
-    function makeBufferAndSetIAttribute(data: Uint8Array, loc: number) {
-      const buf = makeBuffer(data);
-      // setup our attributes to tell WebGL how to pull
-      // the data from the buffer above to the attribute
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribIPointer(
-        loc,
-        1, // size (num components)
-        gl.UNSIGNED_BYTE, // type of data in buffer
-        0, // stride (0 = auto)
-        0, // offset
-      );
-    }
-
-    function makeBufferAndSetAttribute(data: Float32Array, loc: number, size: number) {
-      const newData = new Float32Array(size);
-      for (let i = 0; i < size; i += data.length) {
-        newData.set(data, i);
-      }
-      const buf = makeBuffer(newData);
-      // setup our attributes to tell WebGL how to pull
-      // the data from the buffer above to the attribute
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(
-        loc,
-        2, // size (num components)
-        gl.FLOAT, // type of data in buffer
-        false,
-        0, // stride (0 = auto)
-        0, // offset
-      );
-    }
     const memoryBufferUint8 = new Uint8Array(memory.buffer);
     const memoryBufferFloat32 = new Float32Array(memory.buffer);
 
@@ -189,64 +161,162 @@ const initXpu = (
       vectorAddress / Float32Array.BYTES_PER_ELEMENT,
       (vectorAddress / Float32Array.BYTES_PER_ELEMENT) + n
     );
+    const resultVector = new Float32Array(n);
 
-    // put data in buffers
-    const aBuffer = makeBufferAndSetIAttribute(a, aLoc);
-    const size = a.length * 2;
-    const bBuffer = makeBufferAndSetAttribute(b, bLoc, size);
+    function createShader(type: number, src: string) {
+      const shader = gl.createShader(type)!;
+      gl.shaderSource(shader, src);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        throw new Error(gl.getShaderInfoLog(shader)!);
+      }
+      return shader;
+    }
 
-    // Create and fill out a transform feedback
-    const tf = gl.createTransformFeedback();
-    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+    function createProgram(shaderSources: Record<number, string>, transformFeedbackVaryings: string[]) {
+      const program = gl.createProgram()!;
+      [gl.VERTEX_SHADER, gl.FRAGMENT_SHADER].forEach((type, ndx) => {
+        const shader = createShader(type, shaderSources[ndx]);
+        gl.attachShader(program, shader);
+      });
+      if (transformFeedbackVaryings) {
+        gl.transformFeedbackVaryings(
+          program,
+          transformFeedbackVaryings,
+          gl.SEPARATE_ATTRIBS,
+        );
+      }
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program)!);
+      }
+      return program;
+    }
 
-    // make buffers for output
-    const resultBuffer = makeBuffer(a.length * 4);
+    function makeBuffer(sizeOrData: any, usage: number) {
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, sizeOrData, usage);
+      return buf;
+    }
 
-    // bind the buffers to the transform feedback
-    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, resultBuffer);
+    const matrixBuffer = makeBuffer(a, gl.STATIC_DRAW)!;
+    // const vectorBuffer = makeBuffer(b, gl.STATIC_DRAW)!;
+    const resultBuffer = makeBuffer(n * 4, gl.STATIC_DRAW)!;
 
-    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    function createDataITexture(data: Uint8Array, internalFormat: number, format: number, type: number) {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0, // mip level
+        internalFormat,
+        data.length,
+        1,
+        0, // border
+        format,
+        type,
+        data,
+      );
+      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      return { tex, dimensions: [data.length, 1] };
+    }
 
-    // buffer's we are writing to can not be bound else where
-    gl.bindBuffer(gl.ARRAY_BUFFER, null); // productBuffer was still bound to ARRAY_BUFFER so unbind it
+    function createDataTexture(data: Float32Array, internalFormat: number, format: number, type: number) {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0, // mip level
+        internalFormat,
+        data.length,
+        1,
+        0, // border
+        format,
+        type,
+        data,
+      );
+      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      // gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return { tex, dimensions: [data.length, 1] };
+    }
 
-    // above this line is setup
-    // ---------------------------------
-    // below this line is "render" time
+    const { tex: matrixText, dimensions: matrixTexDimensions } =
+      createDataITexture(a, gl.R8UI, gl.RED, gl.UNSIGNED_BYTE);
+    const { tex: linesTex, dimensions: linesTexDimensions } =
+      createDataTexture(b, gl.R32F, gl.RED, gl.FLOAT);
+    const { tex: resultTexture } = createDataTexture(resultVector, gl.R32F, gl.RED, gl.FLOAT);
 
+    const program = createProgram([vs, fs], []);
+
+    const locs = {
+      // matrix: gl.getAttribLocation(program, 'a_matrix'),
+      matrix: gl.getUniformLocation(program, 'u_matrix'),
+      vector: gl.getUniformLocation(program, 'u_vector'),
+      m: gl.getUniformLocation(program, 'm'),
+      n: gl.getUniformLocation(program, 'n'),
+    };
+
+    function makeVertexArray(buffer: WebGLBuffer, loc: number) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribIPointer(
+        loc,
+        1, // size (num components)
+        gl.UNSIGNED_BYTE, // type of data in buffer
+        0, // stride (0 = auto)
+        0, // offset
+      );
+    }
+
+    const va = gl.createVertexArray();
+    gl.bindVertexArray(va);
+    // makeVertexArray(matrixBuffer, locs.matrix);
+
+    function makeTransformFeedback(buffer: WebGLBuffer) {
+      const tf = gl.createTransformFeedback();
+      gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, buffer);
+      return tf;
+    }
+
+    const resultTF = makeTransformFeedback(resultBuffer);
+
+    gl.bindVertexArray(va);
+
+    gl.viewport(0, 0, n, 1);
     gl.useProgram(program);
 
-    // no need to call the fragment shader
-    gl.enable(gl.RASTERIZER_DISCARD);
+    gl.uniform1i(locs.matrix, 0);
+    gl.uniform1i(locs.vector, 0);
+    gl.uniform1i(locs.m, m);
+    gl.uniform1i(locs.n, n);
+    // gl.bindTexture(gl.TEXTURE_2D, resultTexture);
 
-    // bind our input attribute state for the a and b buffers
-    gl.bindVertexArray(vao);
+    // const frameBuffer = gl.createFramebuffer();
+    // gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
+    // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, resultTexture, 0);
 
-    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, resultTF);
     gl.beginTransformFeedback(gl.POINTS);
-    gl.drawArrays(gl.POINTS, 0, a.length);
+    // gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
+    gl.drawArrays(gl.POINTS, 0, 1);
+    // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.endTransformFeedback();
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
 
-    // turn on using fragment shaders again
-    gl.disable(gl.RASTERIZER_DISCARD);
-
-    const tmpResults = new Float32Array(a.length);
-    gl.bindBuffer(gl.ARRAY_BUFFER, resultBuffer);
-    gl.getBufferSubData(
-      gl.ARRAY_BUFFER,
-      0, // byte offset into GPU buffer,
-      tmpResults,
-    );
-
-    const results = new Float32Array(n);
-    for (let i = 0; i < results.length; i++) {
-      for (let j = i * n_real; j < (i * n_real) + n_real; j++) {
-        results[i] += tmpResults[j];
-      }
+    // get the results.
+    {
+      const tmp_results = new Float32Array(n);
+      // gl.readPixels(0, 0, n, 1, gl.RED, gl.FLOAT, tmp_results);
+      gl.bindBuffer(gl.ARRAY_BUFFER, resultBuffer);
+      gl.getBufferSubData(gl.ARRAY_BUFFER, 0, tmp_results);
+      console.log(tmp_results);
     }
-
-    memoryBufferFloat32.set(results, resultAddress / Float32Array.BYTES_PER_ELEMENT);
   };
 
   return {
