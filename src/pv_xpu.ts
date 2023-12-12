@@ -21,37 +21,6 @@ const buffers = new Map<number, {
   bufferAddress: number
 }>;
 
-// const vs = `#version 300 es
-// in uint a_matrix;
-//
-// uniform sampler2D u_vector;
-// uniform int vectorLength;
-//
-// out float result;
-//
-// vec4 getAs1D(sampler2D tex, ivec2 dimensions, int index) {
-//   int y = index / dimensions.x;
-//   int x = index % dimensions.x;
-//   return texelFetch(tex, ivec2(x, y), 0);
-// }
-//
-// void main() {
-//   ivec2 dimensions = textureSize(u_vector, 0);
-//
-//   uint low_int = uint(0x0F) & a_matrix;
-//   uint high_int = uint(0x0F) & (a_matrix >> 4);
-//
-//   float total = 0.0;
-//   for (int i = 0; i < vectorLength / 2; i++) {
-//     float vectorValue0 = getAs1D(u_vector, dimensions, i * 2).x;
-//     float vectorValue1 = getAs1D(u_vector, dimensions, i * 2 + 1).x;
-//
-//     total += (float(low_int) * vectorValue0) + (float(high_int) * vectorValue1);
-//   }
-//   result = total;
-// }
-// `;
-
 const vs = `#version 300 es
 in vec2 position;
 
@@ -83,7 +52,7 @@ void main() {
   int i = int(gl_FragCoord.x);
   float sum = 0.0;
 
-  int n_real = u_vectorSize / 2;
+  int n_real = u_n / 2;
   for (int j = 0; j < n_real; j++) {
     int matrix_index = (i * n_real) + j;
     int matrix_value = getMatrixValue(u_matrix, dimensions, matrix_index);
@@ -257,8 +226,8 @@ const initXpu = (
     // Set shader uniforms
     const uMatrix = gl.getUniformLocation(program, "u_matrix");
     const uVector = gl.getUniformLocation(program, "u_vector");
-    const uM = gl.getUniformLocation(program, "u_matrixCols");
-    const uN = gl.getUniformLocation(program, "u_matrixRows");
+    const uM = gl.getUniformLocation(program, "u_m");
+    const uN = gl.getUniformLocation(program, "u_n");
 
     gl.uniform1i(uMatrix, 0);
     gl.uniform1i(uVector, 1);
