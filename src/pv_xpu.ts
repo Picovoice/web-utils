@@ -53,42 +53,46 @@ const buffers = new Map<number, {
 // `;
 
 const vs = `#version 300 es
+in vec2 position;
+
 void main() {
+  gl_Position = vec4(position, 0.0, 1.0);
 }
 `;
 
 const fs = `#version 300 es
 precision mediump float;
+precision mediump usampler2D;
 
-uniform sampler2D u_matrix;
+uniform usampler2D u_matrix;
 uniform sampler2D u_vector;
-uniform int m;
-uniform int n;
+uniform int u_m;
+uniform int u_n;
 
-out vec4 result;
+out vec4 fragColor;
 
-vec4 getAs1D(sampler2D tex, ivec2 dimensions, int index) {
+int getMatrixValue(usampler2D tex, ivec2 dimensions, int index) {
   int y = index / dimensions.x;
   int x = index % dimensions.x;
-  return texelFetch(tex, ivec2(x, y), 0);
+  return int(texelFetch(tex, ivec2(x, y), 0).x);
 }
 
 void main() {
-  ivec2 matrix_dimensions = textureSize(u_matrix, 0);
-  ivec2 vector_dimensions = textureSize(u_vector, 0);
+  ivec2 dimensions = textureSize(u_matrix, 0);
 
-  int n_real = n / 2;
+  int i = int(gl_FragCoord.x);
+  float sum = 0.0;
 
-  int i = int(gl_FragCoord.y);
-  float sum = 1.0;
-
+  int n_real = u_vectorSize / 2;
   for (int j = 0; j < n_real; j++) {
     int matrix_index = (i * n_real) + j;
-    float matrixValue = getAs1D(u_vector, matrix_dimensions, matrix_index).x;
-    
-    float vectorValue0 = getAs1D(u_vector, vector_dimensions, i * 2).x;
-    float vectorValue1 = getAs1D(u_vector, vector_dimensions, i * 2 + 1).x;
-    sum += matrixValue * vectorValue0;
+    int matrix_value = getMatrixValue(u_matrix, dimensions, matrix_index);
+
+    int low_int = 0x0F & matrix_value;
+    int high_int = 0x0F & (matrix_value >> 4);
+
+    sum += float(low_int) * texelFetch(u_vector, ivec2(j * 2, 0), 0).x;
+    sum += float(high_int) * texelFetch(u_vector, ivec2(j * 2 + 1, 0), 0).x;
   }
 
   fragColor = vec4(sum, 0.0, 0.0, 1.0);
@@ -112,6 +116,7 @@ const initXpu = (
       setStatus(statusAddress, -1);
       return;
     }
+    const ext = gl.getExtension("EXT_color_buffer_float")!;
     devices.set(objAddress, {
       gl,
       deviceMem: new Set()
@@ -152,6 +157,56 @@ const initXpu = (
     const memoryBufferUint8 = new Uint8Array(memory.buffer);
     const memoryBufferFloat32 = new Float32Array(memory.buffer);
 
+    // Functions for shader, program, texture creation
+    function createShader(type: number, source: string) {
+      const shader = gl.createShader(type)!;
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error("Shader compilation error:", gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+      }
+
+      return shader;
+    }
+
+    function createProgram(vertexShader: WebGLShader, fragmentShader: WebGLShader) {
+      const program = gl.createProgram()!;
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error("Program link error:", gl.getProgramInfoLog(program));
+        gl.deleteProgram(program);
+        return null;
+      }
+
+      return program;
+    }
+
+    function createITexture(data: ArrayBufferView, width: number, height: number) {
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8UI, width, height, 0, gl.RED_INTEGER, gl.UNSIGNED_BYTE, data);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      return texture;
+    }
+
+    function createTexture(data: ArrayBufferView, width: number, height: number) {
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, width, height, 0, gl.RED, gl.FLOAT, data);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      return texture;
+    }
+
     const n_real = Math.round(n / 2);
     const a = memoryBufferUint8.slice(
       matrixAddress,
@@ -163,160 +218,72 @@ const initXpu = (
     );
     const resultVector = new Float32Array(n);
 
-    function createShader(type: number, src: string) {
-      const shader = gl.createShader(type)!;
-      gl.shaderSource(shader, src);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        throw new Error(gl.getShaderInfoLog(shader)!);
-      }
-      return shader;
+    // Create shaders
+    const vertexShader = createShader(gl.VERTEX_SHADER, vs)!;
+    const fragmentShader = createShader(gl.FRAGMENT_SHADER, fs)!;
+
+    const textureMatrix = createITexture(a, m, n_real);
+    const textureVector = createTexture(b, n, 1);
+    const textureResult = createTexture(resultVector, n, 1);
+
+    // Create program
+    const program = createProgram(vertexShader, fragmentShader)!;
+
+    // Set up vertex buffer
+    const vertexData = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+    const vertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+
+    // Set up vertex attribute
+    const positionAttribLocation = gl.getAttribLocation(program, "position");
+    gl.vertexAttribPointer(positionAttribLocation, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(positionAttribLocation);
+
+    // Create framebuffer for rendering to result texture
+    const framebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, textureResult, 0);
+
+    // Check framebuffer completeness
+    const framebufferStatus = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    if (framebufferStatus !== gl.FRAMEBUFFER_COMPLETE) {
+      console.error("Framebuffer is incomplete: " + framebufferStatus.toString(16));
     }
 
-    function createProgram(shaderSources: Record<number, string>, transformFeedbackVaryings: string[]) {
-      const program = gl.createProgram()!;
-      [gl.VERTEX_SHADER, gl.FRAGMENT_SHADER].forEach((type, ndx) => {
-        const shader = createShader(type, shaderSources[ndx]);
-        gl.attachShader(program, shader);
-      });
-      if (transformFeedbackVaryings) {
-        gl.transformFeedbackVaryings(
-          program,
-          transformFeedbackVaryings,
-          gl.SEPARATE_ATTRIBS,
-        );
-      }
-      gl.linkProgram(program);
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        throw new Error(gl.getProgramInfoLog(program)!);
-      }
-      return program;
-    }
-
-    function makeBuffer(sizeOrData: any, usage: number) {
-      const buf = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-      gl.bufferData(gl.ARRAY_BUFFER, sizeOrData, usage);
-      return buf;
-    }
-
-    const matrixBuffer = makeBuffer(a, gl.STATIC_DRAW)!;
-    // const vectorBuffer = makeBuffer(b, gl.STATIC_DRAW)!;
-    const resultBuffer = makeBuffer(n * 4, gl.STATIC_DRAW)!;
-
-    function createDataITexture(data: Uint8Array, internalFormat: number, format: number, type: number) {
-      const tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0, // mip level
-        internalFormat,
-        data.length,
-        1,
-        0, // border
-        format,
-        type,
-        data,
-      );
-      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      return { tex, dimensions: [data.length, 1] };
-    }
-
-    function createDataTexture(data: Float32Array, internalFormat: number, format: number, type: number) {
-      const tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0, // mip level
-        internalFormat,
-        data.length,
-        1,
-        0, // border
-        format,
-        type,
-        data,
-      );
-      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      // gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      return { tex, dimensions: [data.length, 1] };
-    }
-
-    const { tex: matrixText, dimensions: matrixTexDimensions } =
-      createDataITexture(a, gl.R8UI, gl.RED, gl.UNSIGNED_BYTE);
-    const { tex: linesTex, dimensions: linesTexDimensions } =
-      createDataTexture(b, gl.R32F, gl.RED, gl.FLOAT);
-    const { tex: resultTexture } = createDataTexture(resultVector, gl.R32F, gl.RED, gl.FLOAT);
-
-    const program = createProgram([vs, fs], []);
-
-    const locs = {
-      // matrix: gl.getAttribLocation(program, 'a_matrix'),
-      matrix: gl.getUniformLocation(program, 'u_matrix'),
-      vector: gl.getUniformLocation(program, 'u_vector'),
-      m: gl.getUniformLocation(program, 'm'),
-      n: gl.getUniformLocation(program, 'n'),
-    };
-
-    function makeVertexArray(buffer: WebGLBuffer, loc: number) {
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribIPointer(
-        loc,
-        1, // size (num components)
-        gl.UNSIGNED_BYTE, // type of data in buffer
-        0, // stride (0 = auto)
-        0, // offset
-      );
-    }
-
-    const va = gl.createVertexArray();
-    gl.bindVertexArray(va);
-    // makeVertexArray(matrixBuffer, locs.matrix);
-
-    function makeTransformFeedback(buffer: WebGLBuffer) {
-      const tf = gl.createTransformFeedback();
-      gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
-      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, buffer);
-      return tf;
-    }
-
-    const resultTF = makeTransformFeedback(resultBuffer);
-
-    gl.bindVertexArray(va);
-
-    gl.viewport(0, 0, n, 1);
+    // Render to result texture
     gl.useProgram(program);
 
-    gl.uniform1i(locs.matrix, 0);
-    gl.uniform1i(locs.vector, 0);
-    gl.uniform1i(locs.m, m);
-    gl.uniform1i(locs.n, n);
-    // gl.bindTexture(gl.TEXTURE_2D, resultTexture);
+    // Set shader uniforms
+    const uMatrix = gl.getUniformLocation(program, "u_matrix");
+    const uVector = gl.getUniformLocation(program, "u_vector");
+    const uM = gl.getUniformLocation(program, "u_matrixCols");
+    const uN = gl.getUniformLocation(program, "u_matrixRows");
 
-    // const frameBuffer = gl.createFramebuffer();
-    // gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
-    // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, resultTexture, 0);
+    gl.uniform1i(uMatrix, 0);
+    gl.uniform1i(uVector, 1);
+    gl.uniform1i(uM, m);
+    gl.uniform1i(uN, n);
 
-    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, resultTF);
-    gl.beginTransformFeedback(gl.POINTS);
-    // gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
-    gl.drawArrays(gl.POINTS, 0, 1);
-    // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.endTransformFeedback();
-    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, textureMatrix);
 
-    // get the results.
-    {
-      const tmp_results = new Float32Array(n);
-      // gl.readPixels(0, 0, n, 1, gl.RED, gl.FLOAT, tmp_results);
-      gl.bindBuffer(gl.ARRAY_BUFFER, resultBuffer);
-      gl.getBufferSubData(gl.ARRAY_BUFFER, 0, tmp_results);
-      console.log(tmp_results);
-    }
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, textureVector);
+
+    // Set the viewport
+    gl.viewport(0, 0, n, 1);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // Read back the result from the texture (optional)
+    const results = new Float32Array(n); // 4 components per pixel
+    gl.readBuffer(gl.COLOR_ATTACHMENT0);
+    gl.readPixels(0, 0, n, 1, gl.RED, gl.FLOAT, results);
+
+    // Unbind framebuffer
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    memoryBufferFloat32.set(results, resultAddress / Float32Array.BYTES_PER_ELEMENT);
   };
 
   return {
