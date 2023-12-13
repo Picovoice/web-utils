@@ -16,9 +16,14 @@ const devices = new Map<number, {
   deviceMem: Set<number>
 }>();
 
+// const buffers = new Map<number, {
+//   deviceAddress: number,
+//   bufferAddress: number
+// }>;
+
 const buffers = new Map<number, {
   deviceAddress: number,
-  bufferAddress: number
+  buffer: Uint8Array
 }>;
 
 const vs = `#version 300 es
@@ -93,7 +98,21 @@ const initXpu = (
     setStatus(statusAddress, 0);
   };
 
-  const pvXpuDeviceMemAlloc = (objAddress: number, memAddress: number, bufferAddress: number, statusAddress: number): void => {
+  // const pvXpuDeviceMemAlloc = (objAddress: number, memAddress: number, bufferAddress: number, statusAddress: number): void => {
+  //   const obj = devices.get(objAddress);
+  //   if (!obj) {
+  //     setStatus(statusAddress, -1);
+  //     return;
+  //   }
+  //   obj.deviceMem.add(memAddress);
+  //   buffers.set(memAddress, {
+  //     deviceAddress: objAddress,
+  //     bufferAddress: bufferAddress,
+  //   });
+  //   setStatus(statusAddress, 0);
+  // };
+
+  const pvXpuDeviceMemAlloc = (objAddress: number, memAddress: number, sizeBytes: number, statusAddress: number): void => {
     const obj = devices.get(objAddress);
     if (!obj) {
       setStatus(statusAddress, -1);
@@ -102,9 +121,36 @@ const initXpu = (
     obj.deviceMem.add(memAddress);
     buffers.set(memAddress, {
       deviceAddress: objAddress,
-      bufferAddress: bufferAddress,
+      buffer: new Uint8Array(sizeBytes),
     });
     setStatus(statusAddress, 0);
+  };
+
+  const pvXpuDeviceMemFree = (memAddress: number): void => {
+    if (buffers.has(memAddress)) {
+      const { deviceAddress } = buffers.get(memAddress)!;
+      devices.get(deviceAddress)?.deviceMem.delete(memAddress);
+      buffers.delete(memAddress);
+    }
+  };
+
+  const pvXpuDeviceMemCopyToXpu = (memAddress: number, hostAddress: number, sizeBytes: number): void => {
+    const { buffer } = buffers.get(memAddress)!;
+
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
+    buffer.set(memoryBufferUint8.slice(hostAddress, hostAddress + sizeBytes));
+  };
+
+  const pvXpuDeviceMemCopyFromXpu = (memAddress: number, hostAddress: number, sizeBytes: number): void => {
+    if (hostAddress < 0) {
+      console.log("invalid host address", memAddress, hostAddress, sizeBytes);
+      return;
+    }
+
+    const { buffer } = buffers.get(memAddress)!;
+
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
+    memoryBufferUint8.set(buffer.slice(0, sizeBytes), hostAddress);
   };
 
   const pvXpuMatrixVectorMultiply = (
@@ -177,15 +223,18 @@ const initXpu = (
     }
 
     const n_real = Math.round(n / 2);
-    const a = memoryBufferUint8.slice(
-      matrixAddress,
-      matrixAddress + (m * n_real)
-    );
-    const b = memoryBufferFloat32.slice(
-      vectorAddress / Float32Array.BYTES_PER_ELEMENT,
-      (vectorAddress / Float32Array.BYTES_PER_ELEMENT) + n
-    );
-    const resultVector = new Float32Array(n);
+    // const a = memoryBufferUint8.slice(
+    //   matrixAddress,
+    //   matrixAddress + (m * n_real)
+    // );
+    const a = buffers.get(matrixAddress)!.buffer;
+    // const b = memoryBufferFloat32.slice(
+    //   vectorAddress / Float32Array.BYTES_PER_ELEMENT,
+    //   (vectorAddress / Float32Array.BYTES_PER_ELEMENT) + n
+    // );
+    const b = new Float32Array(buffers.get(vectorAddress)!.buffer.buffer);
+    // const resultVector = new Float32Array(n);
+    const resultVector = new Float32Array(buffers.get(resultAddress)!.buffer.buffer);
 
     // Create shaders
     const vertexShader = createShader(gl.VERTEX_SHADER, vs)!;
@@ -252,13 +301,26 @@ const initXpu = (
     // Unbind framebuffer
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-    memoryBufferFloat32.set(results, resultAddress / Float32Array.BYTES_PER_ELEMENT);
+    gl.deleteTexture(textureMatrix);
+    gl.deleteTexture(textureVector);
+    gl.deleteTexture(textureVector);
+
+    gl.deleteFramebuffer(framebuffer);
+    gl.deleteBuffer(vertexBuffer);
+
+    gl.deleteProgram(program);
+
+    // memoryBufferFloat32.set(results, resultAddress / Float32Array.BYTES_PER_ELEMENT);
+    resultVector.set(results);
   };
 
   return {
     pv_xpu_webgl_device_init_wasm: pvXpuDeviceInit,
     pv_xpu_webgl_device_mem_alloc_wasm: pvXpuDeviceMemAlloc,
-    pv_matrix_vector_multiply_webgl_wasm: pvXpuMatrixVectorMultiply
+    pv_xpu_webgl_device_mem_free_wasm: pvXpuDeviceMemFree,
+    pv_matrix_vector_multiply_webgl_wasm: pvXpuMatrixVectorMultiply,
+    pv_xpu_webgl_device_mem_copy_to_xpu_wasm: pvXpuDeviceMemCopyToXpu,
+    pv_xpu_webgl_device_mem_copy_from_xpu_wasm: pvXpuDeviceMemCopyFromXpu
   };
 };
 
