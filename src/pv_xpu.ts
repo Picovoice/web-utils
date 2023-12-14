@@ -153,7 +153,7 @@ const initXpu = (
     memoryBufferUint8.set(buffer.slice(0, sizeBytes), hostAddress);
   };
 
-  const pvXpuMatrixVectorMultiply = (
+  const pvXpuMatrixVectorMultiply = async (
     objAddress: number,
     matrixAddress: number,
     vectorAddress: number,
@@ -296,39 +296,53 @@ const initXpu = (
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-    const pbo = gl.createBuffer();
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
-    gl.bufferData(gl.PIXEL_PACK_BUFFER, n * 4, gl.STREAM_READ);
-
     // Read back the result from the texture (optional)
-    // const results = new Float32Array(n); // 4 components per pixel
-
-    const readPixelFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!;
-    gl.readBuffer(gl.COLOR_ATTACHMENT0);
-    gl.readPixels(0, 0, n, 1, gl.RED, gl.FLOAT, 0);
-
-    const readPixelStatus = gl.clientWaitSync(readPixelFence, 0, 0); // Wait indefinitely
-    if (readPixelStatus === gl.WAIT_FAILED) {
-      console.error("Failed to wait for readPixelFence.");
-    }
-    gl.deleteSync(readPixelFence);
-
-    const bufferFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!;
-
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
     const results = new Float32Array(n);
-    gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, results);
 
-    const bufferFenceStatus = gl.clientWaitSync(bufferFence, 0, 0); // Wait indefinitely
-    if (bufferFenceStatus === gl.WAIT_FAILED) {
-      console.error("Failed to wait for bufferFence.");
+    const clientWaitAsync = function (sync: WebGLSync, flags = 0): Promise<void> {
+      return new Promise((resolve, reject) => {
+        const check = function () {
+          const status = gl.clientWaitSync(sync, flags, 0);
+          if (status === gl.WAIT_FAILED) {
+            reject();
+          } else if (status === gl.TIMEOUT_EXPIRED) {
+            requestAnimationFrame(check);
+          } else {
+            resolve();
+          }
+        };
+        requestAnimationFrame(check);
+        // check();
+      });
+    };
+    async function readPixelsAsync() {
+      const pbo = gl.createBuffer();
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
+      gl.bufferData(gl.PIXEL_PACK_BUFFER, n * 4, gl.STREAM_READ);
+      gl.readPixels(0, 0, n, 1, gl.RED, gl.FLOAT, 0);
+      const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      if (!sync) return null;
+      gl.flush();
+      return clientWaitAsync(sync).then(() => {
+        gl.deleteSync(sync);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
+        gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, results);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+        gl.deleteBuffer(pbo);
+      });
     }
-    gl.deleteSync(bufferFence);
+
+    const before = Date.now() / 1000;
+
+    // await readPixelsAsync();
+    gl.readPixels(0, 0, n, 1, gl.RED, gl.FLOAT, results);
+
+    const after = Date.now() / 1000;
+
+    console.log("read pixes time: ", after - before);
 
     // Unbind framebuffer
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-    gl.deleteBuffer(pbo);
 
     gl.deleteTexture(textureMatrix);
     gl.deleteTexture(textureVector);
