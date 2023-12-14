@@ -35,13 +35,14 @@ void main() {
 `;
 
 const fs = `#version 300 es
-precision mediump float;
-precision mediump usampler2D;
+precision lowp float;
+precision lowp usampler2D;
 
 uniform usampler2D u_matrix;
 uniform sampler2D u_vector;
 uniform int u_m;
 uniform int u_n;
+uniform int u_nreal;
 
 out vec4 fragColor;
 
@@ -57,9 +58,8 @@ void main() {
   int i = int(gl_FragCoord.x);
   float sum = 0.0;
 
-  int n_real = u_n / 2;
-  for (int j = 0; j < n_real; j++) {
-    int matrix_index = (i * n_real) + j;
+  for (int j = 0; j < u_nreal; j++) {
+    int matrix_index = (i * u_nreal) + j;
     int matrix_value = getMatrixValue(u_matrix, dimensions, matrix_index);
 
     int low_int = 0x0F & matrix_value;
@@ -277,11 +277,13 @@ const initXpu = (
     const uVector = gl.getUniformLocation(program, "u_vector");
     const uM = gl.getUniformLocation(program, "u_m");
     const uN = gl.getUniformLocation(program, "u_n");
+    const uNReal = gl.getUniformLocation(program, "u_nreal");
 
     gl.uniform1i(uMatrix, 0);
     gl.uniform1i(uVector, 1);
     gl.uniform1i(uM, m);
     gl.uniform1i(uN, n);
+    gl.uniform1i(uNReal, n_real);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, textureMatrix);
@@ -291,19 +293,46 @@ const initXpu = (
 
     // Set the viewport
     gl.viewport(0, 0, n, 1);
+
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
+    const pbo = gl.createBuffer();
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
+    gl.bufferData(gl.PIXEL_PACK_BUFFER, n * 4, gl.STREAM_READ);
+
     // Read back the result from the texture (optional)
-    const results = new Float32Array(n); // 4 components per pixel
+    // const results = new Float32Array(n); // 4 components per pixel
+
+    const readPixelFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!;
     gl.readBuffer(gl.COLOR_ATTACHMENT0);
-    gl.readPixels(0, 0, n, 1, gl.RED, gl.FLOAT, results);
+    gl.readPixels(0, 0, n, 1, gl.RED, gl.FLOAT, 0);
+
+    const readPixelStatus = gl.clientWaitSync(readPixelFence, 0, 0); // Wait indefinitely
+    if (readPixelStatus === gl.WAIT_FAILED) {
+      console.error("Failed to wait for readPixelFence.");
+    }
+    gl.deleteSync(readPixelFence);
+
+    const bufferFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!;
+
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
+    const results = new Float32Array(n);
+    gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, results);
+
+    const bufferFenceStatus = gl.clientWaitSync(bufferFence, 0, 0); // Wait indefinitely
+    if (bufferFenceStatus === gl.WAIT_FAILED) {
+      console.error("Failed to wait for bufferFence.");
+    }
+    gl.deleteSync(bufferFence);
 
     // Unbind framebuffer
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
+    gl.deleteBuffer(pbo);
+
     gl.deleteTexture(textureMatrix);
     gl.deleteTexture(textureVector);
-    gl.deleteTexture(textureVector);
+    gl.deleteTexture(textureResult);
 
     gl.deleteFramebuffer(framebuffer);
     gl.deleteBuffer(vertexBuffer);
