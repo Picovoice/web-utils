@@ -11,7 +11,10 @@
 
 /* eslint camelcase: 0 */
 
-import XpuWasm from '../lib/xpu-helper/pv_xpu_helper_simd.wasm';
+import { simd } from 'wasm-feature-detect';
+
+import XpuWasm from '../lib/xpu-helper/pv_xpu_helper.wasm';
+import XpuWasmSimd from '../lib/xpu-helper/pv_xpu_helper_simd.wasm';
 import XpuWorker from 'web-worker:./pv_xpu_utils/pv_xpu_worker.ts';
 import { base64ToUint8Array } from './utils';
 
@@ -78,11 +81,14 @@ class PvXpu {
   }
 }
 
+const total: number[] = [];
+const workerTotal: number[] = [];
+const totalSync: number[] = [];
+const totalResult: number[] = [];
+
 const initXpu = (
   memory: WebAssembly.Memory,
 ) => {
-  const wasm = base64ToUint8Array(XpuWasm);
-
   const waitForWorker = (worker: Worker, command: any, options?: any) => {
     worker.postMessage(command, options);
     return new Promise((resolve, reject) => {
@@ -110,6 +116,9 @@ const initXpu = (
   };
 
   const pvXpuDeviceInit = async (objAddress: number, numWorkers: number, statusAddress: number): Promise<void> => {
+    const isSimd = await simd();
+    const wasm = base64ToUint8Array(isSimd ? XpuWasmSimd : XpuWasm);
+
     const workers: Worker[] = [];
     for (let i = 0; i < numWorkers; i++) {
       const worker = new XpuWorker();
@@ -138,6 +147,22 @@ const initXpu = (
       worker.terminate();
     }
     PvXpu.removeXpu(objAddress);
+
+    const sum = total.reduce((a, b) => a + b, 0);
+    const avg = (sum / total.length);
+    console.log("Total time in mult: ", avg);
+
+    const workerSum = workerTotal.reduce((a, b) => a + b, 0);
+    const workerAvg = (workerSum / workerTotal.length);
+    console.log("Worker Total time in mult: ", workerAvg);
+
+    const worker1Sum = totalResult.reduce((a, b) => a + b, 0);
+    const worker1Avg = (worker1Sum / totalResult.length);
+    console.log("Worker result Total time in mult: ", worker1Avg);
+
+    const syncSum = totalSync.reduce((a, b) => a + b, 0);
+    const syncAvg = (syncSum / totalSync.length);
+    console.log("Sync Total time: ", syncAvg);
   };
 
   const pvXpuDeviceMemAlloc = async (objAddress: number, memAddress: number, sizeBytes: number, isShared: number, statusAddress: number): Promise<void> => {
@@ -237,7 +262,6 @@ const initXpu = (
     const { objAddress, allocSize } = mem;
     const obj = PvXpu.getXpu(objAddress)!;
 
-
     const memoryBufferUint8 = new Uint8Array(memory.buffer);
     const workerResults: Promise<any>[] = [];
     const chunkSize = allocSize / obj.numWorkers;
@@ -274,6 +298,8 @@ const initXpu = (
     resultAddress: number,
     statusAddress: number
   ) => {
+    const before = Date.now() / 1000;
+
     const obj = PvXpu.getXpu(objAddress);
     if (!obj) {
       setStatus(statusAddress, -1);
@@ -283,7 +309,10 @@ const initXpu = (
     const numWorkers = obj.numWorkers;
     const chunkSize = m / numWorkers;
 
-    const workerResults: Promise<any>[] = [];
+    let workerResults: Promise<any>[] = [];
+    let workerProcTime = 0;
+
+    const before3 = Date.now() / 1000;
 
     for (let i = 0; i < numWorkers; i++) {
       workerResults.push(waitForWorker(obj.workers[i], {
@@ -296,7 +325,35 @@ const initXpu = (
       }));
     }
 
+    const resultBuffer = new Float32Array(n);
+    const results = await Promise.all(workerResults);
+
+    for (let i = 0; i < results.length; i++) {
+      resultBuffer.set(results[i].buffer, i * chunkSize);
+      workerProcTime += results[i].procSec;
+    }
+
+    const after3 = Date.now() / 1000;
+
+    const before2 = Date.now() / 1000;
+
+    workerResults = [];
+    for (let i = 0; i < numWorkers; i++) {
+      workerResults.push(waitForWorker(obj.workers[i], {
+        action: PvXpuAction.SYNC_VECTOR,
+        vectorAddress: resultAddress,
+        buffer: resultBuffer,
+      }));
+    }
     await Promise.all(workerResults);
+
+    const after2 = Date.now() / 1000;
+
+    const after = Date.now() / 1000;
+    total.push(after - before);
+    workerTotal.push(workerProcTime / obj.numWorkers);
+    totalSync.push(after2 - before2);
+    totalResult.push(after3 - before3);
   };
 
   return {

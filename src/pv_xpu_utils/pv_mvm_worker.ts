@@ -15,15 +15,48 @@ import { PvXpuAction } from './pv_xpu_types';
 
 const matrixVectorMultiply = (data: any) => {
   try {
-    const { exports, memAlloc } = data.globals;
+    const before = Date.now() / 1000;
+
+    const { exports, memAlloc, memory } = data.globals;
     const { matrixAddress, vectorAddress, m, n, resultAddress } = data;
     const { pv_matrix_vector_multiply } = exports;
+
+    const memoryBufferFloat32 = new Float32Array(memory.buffer);
 
     const { workerMemAddress: workerMatrixAddress } = memAlloc.get(matrixAddress)!;
     const { workerMemAddress: workerVectorAddress } = memAlloc.get(vectorAddress)!;
     const { workerMemAddress: workerResultAddress } = memAlloc.get(resultAddress)!;
 
     pv_matrix_vector_multiply(workerMatrixAddress, workerVectorAddress, m, n, workerResultAddress);
+
+    const after = Date.now() / 1000;
+
+    self.postMessage({
+      command: 'ok',
+      result: {
+        buffer: memoryBufferFloat32.slice(
+          workerResultAddress / Float32Array.BYTES_PER_ELEMENT,
+          (workerResultAddress + m) / Float32Array.BYTES_PER_ELEMENT
+        ),
+        procSec: after - before
+      }
+    });
+  } catch (e: any) {
+    self.postMessage({
+      command: 'error',
+      message: e.message
+    });
+  }
+};
+
+const syncVector = (data: any) => {
+  try {
+    const { memAlloc, memory } = data.globals;
+    const { vectorAddress, buffer } = data;
+
+    const memoryBufferFloat32 = new Float32Array(memory.buffer);
+    const workerMemAddress = memAlloc.get(vectorAddress)!;
+    memoryBufferFloat32.set(buffer, workerMemAddress / Float32Array.BYTES_PER_ELEMENT);
 
     self.postMessage({
       command: 'ok'
@@ -37,6 +70,7 @@ const matrixVectorMultiply = (data: any) => {
 };
 
 export const pvMvmActionMap: Partial<Record<PvXpuAction, CallableFunction>> = {
-  [PvXpuAction.MATRIX_VECTOR_MULTIPLY]: matrixVectorMultiply
+  [PvXpuAction.MATRIX_VECTOR_MULTIPLY]: matrixVectorMultiply,
+  [PvXpuAction.SYNC_VECTOR]: syncVector,
 };
 

@@ -18,4 +18,5 @@ export enum PvXpuAction {
 
   // other xpu actions
   MATRIX_VECTOR_MULTIPLY,
+  SYNC_VECTOR,
 }
