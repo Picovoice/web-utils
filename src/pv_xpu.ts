@@ -11,65 +11,89 @@
 
 /* eslint camelcase: 0 */
 
-const devices = new Map<number, {
-  gl: WebGL2RenderingContext,
-  deviceMem: Set<number>
-}>();
-
-// const buffers = new Map<number, {
-//   deviceAddress: number,
-//   bufferAddress: number
-// }>;
-
-const buffers = new Map<number, {
-  deviceAddress: number,
-  buffer: Uint8Array
-}>;
-
-const vs = `#version 300 es
-in vec2 position;
-
-void main() {
-  gl_Position = vec4(position, 0.0, 1.0);
-}
-`;
-
-const fs = `#version 300 es
-precision mediump float;
-precision mediump usampler2D;
-
-uniform usampler2D u_matrix;
-uniform sampler2D u_vector;
-uniform int u_m;
-uniform int u_n;
-
-out vec4 fragColor;
-
-int getMatrixValue(usampler2D tex, ivec2 dimensions, int index) {
-  int y = index / dimensions.x;
-  int x = index % dimensions.x;
-  return int(texelFetch(tex, ivec2(x, y), 0).x);
-}
-
-void main() {
-  ivec2 dimensions = textureSize(u_matrix, 0);
-
-  int i = int(gl_FragCoord.x);
-  float sum = 0.0;
-
-  int n_real = u_n / 2;
-  for (int j = 0; j < n_real; j++) {
-    int matrix_index = (i * n_real) + j;
-    int matrix_value = getMatrixValue(u_matrix, dimensions, matrix_index);
-
-    int low_int = 0x0F & matrix_value;
-    int high_int = 0x0F & (matrix_value >> 4);
-
-    sum += float(low_int) * texelFetch(u_vector, ivec2(j * 2, 0), 0).x;
-    sum += float(high_int) * texelFetch(u_vector, ivec2(j * 2 + 1, 0), 0).x;
+const gpuDevices = new Map<
+  number,
+  {
+    gpuDevice: GPUDevice;
+    deviceAddresses: Set<number>;
   }
+>();
 
-  fragColor = vec4(sum, 0.0, 0.0, 1.0);
+const gpuBuffers = new Map<
+  number,
+  {
+    deviceAddress: number;
+    buffer: GPUBuffer;
+  }
+>();
+
+const gpuStagingBuffers = new Map<
+  number,
+  {
+    deviceAddress: number;
+    buffer: GPUBuffer;
+  }
+>();
+
+const gpuShaders = new Map<
+  number,
+  {
+    bindGroupLayout: GPUBindGroupLayout;
+    pipeline: GPUComputePipeline;
+  }
+>();
+
+const shaderSource = `
+@group(0) @binding(0)
+var<storage, read> matrix: array<u32>;
+
+@group(0) @binding(1)
+var<storage, read> vector: array<f32>;
+
+@group(0) @binding(2)
+var<storage, read_write> result: array<f32>;
+
+struct MetaData {
+  m: u32,  
+  n_real: u32,
+}
+
+@group(0) @binding(3)
+var<storage, read> metadata: MetaData;
+
+@compute @workgroup_size(16)
+fn main(
+  @builtin(global_invocation_id)
+  global_id : vec3u,
+) {    
+    let i: u32 = global_id.x;
+    if (i >= metadata.m) {
+        return;
+    }
+                
+    var sum : f32 = 0;
+    for (var j: u32 = 0u; j < metadata.n_real; j = j + 1u) {
+        var matrix_value: u32 = matrix[(i * metadata.n_real) + j];
+        var val_1 : f32 = f32(0x0000000F & (matrix_value >> 0u));
+        var val_2 : f32 = f32(0x0000000F & (matrix_value >> 4u));
+        var val_3 : f32 = f32(0x0000000F & (matrix_value >> 8u));
+        var val_4 : f32 = f32(0x0000000F & (matrix_value >> 12u));
+        var val_5 : f32 = f32(0x0000000F & (matrix_value >> 16u));
+        var val_6 : f32 = f32(0x0000000F & (matrix_value >> 20u));
+        var val_7 : f32 = f32(0x0000000F & (matrix_value >> 24u));
+        var val_8 : f32 = f32(0x0000000F & (matrix_value >> 28u));        
+        
+        sum = sum + (val_1 * vector[(j * 8u) + 0u]);
+        sum = sum + (val_2 * vector[(j * 8u) + 1u]);
+        sum = sum + (val_3 * vector[(j * 8u) + 2u]);
+        sum = sum + (val_4 * vector[(j * 8u) + 3u]);
+        sum = sum + (val_5 * vector[(j * 8u) + 4u]);
+        sum = sum + (val_6 * vector[(j * 8u) + 5u]);
+        sum = sum + (val_7 * vector[(j * 8u) + 6u]);
+        sum = sum + (val_8 * vector[(j * 8u) + 7u]);        
+    }
+    
+    result[i] = sum;
 }
 `;
 
@@ -79,81 +103,228 @@ const initXpu = (
 ) => {
   const setStatus = (statusAddress: number, value: number) => {
     const memoryBufferInt32 = new Int32Array(memory.buffer);
-    memoryBufferInt32[
-      statusAddress / Int32Array.BYTES_PER_ELEMENT
-    ] = value;
+    memoryBufferInt32[statusAddress / Int32Array.BYTES_PER_ELEMENT] = value;
   };
 
-  const pvXpuDeviceInit = (objAddress: number, statusAddress: number): void => {
-    const gl = document.createElement("canvas").getContext("webgl2");
-    if (!gl) {
+  const pvXpuDeviceInit = async (
+    objAddress: number,
+    statusAddress: number
+  ): Promise<void> => {
+    try {
+      if (!window.isSecureContext) {
+        console.error(
+          'WebGPU is only available in secure contexts (e.g. HTTPS)'
+        );
+        setStatus(statusAddress, -1);
+        return;
+      }
+
+      if (!navigator.gpu) {
+        console.error('WebGPU not supported.');
+        setStatus(statusAddress, -1);
+        return;
+      }
+
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        console.error(
+          'WebGPU not supported, please enable it in your browser.'
+        );
+        setStatus(statusAddress, -1);
+        return;
+      }
+
+      const device = await adapter!.requestDevice();
+      if (!device) {
+        console.error('Could not find WebGPU GPU device.');
+        setStatus(statusAddress, -1);
+        return;
+      }
+
+      gpuDevices.set(objAddress, {
+        gpuDevice: device,
+        deviceAddresses: new Set(),
+      });
+      setStatus(statusAddress, 0);
+    } catch (e) {
+      console.error(e);
+      setStatus(statusAddress, -1);
+    }
+  };
+
+  const pvXpuDeviceLoadShader = (
+    objAddress: number,
+    libNameAddress: number,
+    shaderNameAddress: number,
+    statusAddress: number
+  ) => {
+    const obj = gpuDevices.get(objAddress);
+    if (!obj) {
+      console.error('WebGPU device has not been initialized');
       setStatus(statusAddress, -1);
       return;
     }
-    const ext = gl.getExtension("EXT_color_buffer_float")!;
-    devices.set(objAddress, {
-      gl,
-      deviceMem: new Set()
+
+    const bindGroupLayout = obj.gpuDevice.createBindGroupLayout({
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: { type: 'read-only-storage' },
+        },
+        {
+          binding: 1,
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: { type: 'read-only-storage' },
+        },
+        {
+          binding: 2,
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: { type: 'storage' },
+        },
+        {
+          binding: 3,
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: { type: 'read-only-storage' },
+        },
+      ],
     });
+
+    const pipelineLayout = obj.gpuDevice.createPipelineLayout({
+      bindGroupLayouts: [bindGroupLayout],
+    });
+    const shaderModule = obj.gpuDevice.createShaderModule({
+      code: shaderSource,
+    });
+    const pipeline = obj.gpuDevice.createComputePipeline({
+      layout: pipelineLayout,
+      compute: {
+        module: shaderModule,
+        entryPoint: 'main',
+      },
+    });
+
+    gpuShaders.set(objAddress, { bindGroupLayout, pipeline });
+
     setStatus(statusAddress, 0);
   };
 
-  // const pvXpuDeviceMemAlloc = (objAddress: number, memAddress: number, bufferAddress: number, statusAddress: number): void => {
-  //   const obj = devices.get(objAddress);
-  //   if (!obj) {
-  //     setStatus(statusAddress, -1);
-  //     return;
-  //   }
-  //   obj.deviceMem.add(memAddress);
-  //   buffers.set(memAddress, {
-  //     deviceAddress: objAddress,
-  //     bufferAddress: bufferAddress,
-  //   });
-  //   setStatus(statusAddress, 0);
-  // };
-
-  const pvXpuDeviceMemAlloc = (objAddress: number, memAddress: number, sizeBytes: number, statusAddress: number): void => {
-    const obj = devices.get(objAddress);
+  const pvXpuDeviceMemAlloc = (
+    objAddress: number,
+    memAddress: number,
+    sizeBytes: number,
+    isCopySrc: boolean,
+    isMapped: boolean,
+    createStagedBuffer: boolean,
+    statusAddress: number
+  ): void => {
+    const obj = gpuDevices.get(objAddress);
     if (!obj) {
+      console.error('WebGPU device has not been initialized');
       setStatus(statusAddress, -1);
       return;
     }
-    obj.deviceMem.add(memAddress);
-    buffers.set(memAddress, {
+    obj.deviceAddresses.add(memAddress);
+
+    let usage = GPUBufferUsage.STORAGE;
+    if (isCopySrc) {
+      usage |= GPUBufferUsage.COPY_SRC;
+    }
+    gpuBuffers.set(memAddress, {
       deviceAddress: objAddress,
-      buffer: new Uint8Array(sizeBytes),
+      buffer: obj.gpuDevice.createBuffer({
+        mappedAtCreation: isMapped,
+        size: sizeBytes * Uint8Array.BYTES_PER_ELEMENT,
+        usage,
+      }),
     });
+
+    if (createStagedBuffer) {
+      gpuStagingBuffers.set(memAddress, {
+        deviceAddress: objAddress,
+        buffer: obj.gpuDevice.createBuffer({
+          size: sizeBytes * Uint8Array.BYTES_PER_ELEMENT,
+          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+        }),
+      });
+    }
     setStatus(statusAddress, 0);
   };
 
   const pvXpuDeviceMemFree = (memAddress: number): void => {
-    if (buffers.has(memAddress)) {
-      const { deviceAddress } = buffers.get(memAddress)!;
-      devices.get(deviceAddress)?.deviceMem.delete(memAddress);
-      buffers.delete(memAddress);
+    if (gpuBuffers.has(memAddress)) {
+      const { deviceAddress, buffer } = gpuBuffers.get(memAddress)!;
+      buffer.destroy();
+
+      gpuDevices.get(deviceAddress)?.deviceAddresses.delete(memAddress);
+      gpuBuffers.delete(memAddress);
+    }
+
+    if (gpuStagingBuffers.has(memAddress)) {
+      const { deviceAddress, buffer } = gpuStagingBuffers.get(memAddress)!;
+      buffer.destroy();
+
+      gpuDevices.get(deviceAddress)?.deviceAddresses.delete(memAddress);
+      gpuStagingBuffers.delete(memAddress);
     }
   };
 
-  const pvXpuDeviceMemCopyToXpu = (memAddress: number, hostAddress: number, sizeBytes: number): void => {
-    const { buffer } = buffers.get(memAddress)!;
-
-    const memoryBufferUint8 = new Uint8Array(memory.buffer);
-    buffer.set(memoryBufferUint8.slice(hostAddress, hostAddress + sizeBytes));
-  };
-
-  const pvXpuDeviceMemCopyFromXpu = (memAddress: number, hostAddress: number, sizeBytes: number): void => {
+  const pvXpuDeviceMemCopyToXpu = (
+    memAddress: number,
+    hostAddress: number,
+    sizeBytes: number
+  ): void => {
     if (hostAddress < 0) {
-      console.log("invalid host address", memAddress, hostAddress, sizeBytes);
+      console.error('invalid host address', memAddress, hostAddress, sizeBytes);
       return;
     }
 
-    const { buffer } = buffers.get(memAddress)!;
+    const { deviceAddress, buffer } = gpuBuffers.get(memAddress)!;
+
+    const obj = gpuDevices.get(deviceAddress);
+    if (!obj) {
+      console.error('WebGPU device has not been initialized');
+      return;
+    }
 
     const memoryBufferUint8 = new Uint8Array(memory.buffer);
-    memoryBufferUint8.set(buffer.slice(0, sizeBytes), hostAddress);
+    const bufferMap = new Uint8Array(buffer.getMappedRange());
+    bufferMap.set(
+      memoryBufferUint8.slice(hostAddress, hostAddress + sizeBytes)
+    );
+    buffer.unmap();
   };
 
-  const pvXpuMatrixVectorMultiply = (
+  const pvXpuDeviceMemCopyFromXpu = async (
+    memAddress: number,
+    hostAddress: number,
+    sizeBytes: number
+  ): Promise<void> => {
+    if (hostAddress < 0) {
+      console.error('invalid host address', memAddress, hostAddress, sizeBytes);
+      return;
+    }
+
+    const { deviceAddress, buffer } = gpuStagingBuffers.get(memAddress)!;
+    if (!buffer) {
+      console.error('Staging buffer has not been allocated');
+      return;
+    }
+
+    const obj = gpuDevices.get(deviceAddress);
+    if (!obj) {
+      console.error('WebGPU device has not been initialized');
+      return;
+    }
+
+    await buffer!.mapAsync(GPUMapMode.READ, 0, sizeBytes);
+    const mappedBuffer = new Uint8Array(buffer!.getMappedRange(0, sizeBytes));
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
+    memoryBufferUint8.set(mappedBuffer.slice(0, sizeBytes), hostAddress);
+    buffer!.unmap();
+  };
+
+  const pvXpuMatrixVectorMultiply = async (
     objAddress: number,
     matrixAddress: number,
     vectorAddress: number,
@@ -161,169 +332,77 @@ const initXpu = (
     n: number,
     resultAddress: number,
     statusAddress: number
-  ) => {
-    const obj = devices.get(objAddress);
+  ): Promise<void> => {
+    const obj = gpuDevices.get(objAddress);
     if (!obj) {
+      console.error('WebGPU device has not been initialized');
       setStatus(statusAddress, -1);
       return;
     }
-    const { gl } = obj;
 
-    const memoryBufferUint8 = new Uint8Array(memory.buffer);
-    const memoryBufferFloat32 = new Float32Array(memory.buffer);
+    const n_real = Math.ceil(n / 8);
+    const metadataArray = new Uint32Array([m, n_real]);
+    const metadataBuffer = obj.gpuDevice.createBuffer({
+      mappedAtCreation: true,
+      size: 2 * Uint32Array.BYTES_PER_ELEMENT,
+      usage: GPUBufferUsage.STORAGE,
+    });
+    const bufferMap = new Uint32Array(metadataBuffer.getMappedRange());
+    bufferMap.set(metadataArray);
+    metadataBuffer.unmap();
 
-    // Functions for shader, program, texture creation
-    function createShader(type: number, source: string) {
-      const shader = gl.createShader(type)!;
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
+    const { bindGroupLayout, pipeline } = gpuShaders.get(objAddress)!;
+    const matrixBuffer = gpuBuffers.get(matrixAddress)!.buffer;
+    const vectorBuffer = gpuBuffers.get(vectorAddress)!.buffer;
+    const resultBuffer = gpuBuffers.get(resultAddress)!.buffer;
 
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        console.error("Shader compilation error:", gl.getShaderInfoLog(shader));
-        gl.deleteShader(shader);
-        return null;
-      }
+    const bindGroup = obj.gpuDevice.createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        {
+          binding: 0,
+          resource: { buffer: matrixBuffer },
+        },
+        {
+          binding: 1,
+          resource: { buffer: vectorBuffer },
+        },
+        {
+          binding: 2,
+          resource: { buffer: resultBuffer },
+        },
+        { binding: 3, resource: { buffer: metadataBuffer } },
+      ],
+    });
 
-      return shader;
-    }
+    const commandEncoder = obj.gpuDevice.createCommandEncoder();
+    const passEncoder = commandEncoder.beginComputePass();
+    passEncoder.setBindGroup(0, bindGroup);
+    passEncoder.setPipeline(pipeline);
+    passEncoder.dispatchWorkgroups(Math.ceil(m / 16));
+    passEncoder.end();
 
-    function createProgram(vertexShader: WebGLShader, fragmentShader: WebGLShader) {
-      const program = gl.createProgram()!;
-      gl.attachShader(program, vertexShader);
-      gl.attachShader(program, fragmentShader);
-      gl.linkProgram(program);
+    commandEncoder.copyBufferToBuffer(
+      resultBuffer,
+      0,
+      gpuStagingBuffers.get(resultAddress)!.buffer,
+      0,
+      m * Float32Array.BYTES_PER_ELEMENT
+    );
+    obj.gpuDevice.queue.submit([commandEncoder.finish()]);
 
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        console.error("Program link error:", gl.getProgramInfoLog(program));
-        gl.deleteProgram(program);
-        return null;
-      }
-
-      return program;
-    }
-
-    function createITexture(data: ArrayBufferView, width: number, height: number) {
-      const texture = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8UI, width, height, 0, gl.RED_INTEGER, gl.UNSIGNED_BYTE, data);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.bindTexture(gl.TEXTURE_2D, null);
-      return texture;
-    }
-
-    function createTexture(data: ArrayBufferView, width: number, height: number) {
-      const texture = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, width, height, 0, gl.RED, gl.FLOAT, data);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.bindTexture(gl.TEXTURE_2D, null);
-      return texture;
-    }
-
-    const n_real = Math.round(n / 2);
-    // const a = memoryBufferUint8.slice(
-    //   matrixAddress,
-    //   matrixAddress + (m * n_real)
-    // );
-    const a = buffers.get(matrixAddress)!.buffer;
-    // const b = memoryBufferFloat32.slice(
-    //   vectorAddress / Float32Array.BYTES_PER_ELEMENT,
-    //   (vectorAddress / Float32Array.BYTES_PER_ELEMENT) + n
-    // );
-    const b = new Float32Array(buffers.get(vectorAddress)!.buffer.buffer);
-    // const resultVector = new Float32Array(n);
-    const resultVector = new Float32Array(buffers.get(resultAddress)!.buffer.buffer);
-
-    // Create shaders
-    const vertexShader = createShader(gl.VERTEX_SHADER, vs)!;
-    const fragmentShader = createShader(gl.FRAGMENT_SHADER, fs)!;
-
-    const textureMatrix = createITexture(a, m, n_real);
-    const textureVector = createTexture(b, n, 1);
-    const textureResult = createTexture(resultVector, n, 1);
-
-    // Create program
-    const program = createProgram(vertexShader, fragmentShader)!;
-
-    // Set up vertex buffer
-    const vertexData = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
-    const vertexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
-
-    // Set up vertex attribute
-    const positionAttribLocation = gl.getAttribLocation(program, "position");
-    gl.vertexAttribPointer(positionAttribLocation, 2, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(positionAttribLocation);
-
-    // Create framebuffer for rendering to result texture
-    const framebuffer = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, textureResult, 0);
-
-    // Check framebuffer completeness
-    const framebufferStatus = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-    if (framebufferStatus !== gl.FRAMEBUFFER_COMPLETE) {
-      console.error("Framebuffer is incomplete: " + framebufferStatus.toString(16));
-    }
-
-    // Render to result texture
-    gl.useProgram(program);
-
-    // Set shader uniforms
-    const uMatrix = gl.getUniformLocation(program, "u_matrix");
-    const uVector = gl.getUniformLocation(program, "u_vector");
-    const uM = gl.getUniformLocation(program, "u_m");
-    const uN = gl.getUniformLocation(program, "u_n");
-
-    gl.uniform1i(uMatrix, 0);
-    gl.uniform1i(uVector, 1);
-    gl.uniform1i(uM, m);
-    gl.uniform1i(uN, n);
-
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, textureMatrix);
-
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, textureVector);
-
-    // Set the viewport
-    gl.viewport(0, 0, n, 1);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-    // Read back the result from the texture (optional)
-    const results = new Float32Array(n); // 4 components per pixel
-    gl.readBuffer(gl.COLOR_ATTACHMENT0);
-    gl.readPixels(0, 0, n, 1, gl.RED, gl.FLOAT, results);
-
-    // Unbind framebuffer
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-    gl.deleteTexture(textureMatrix);
-    gl.deleteTexture(textureVector);
-    gl.deleteTexture(textureVector);
-
-    gl.deleteFramebuffer(framebuffer);
-    gl.deleteBuffer(vertexBuffer);
-
-    gl.deleteProgram(program);
-
-    // memoryBufferFloat32.set(results, resultAddress / Float32Array.BYTES_PER_ELEMENT);
-    resultVector.set(results);
+    setStatus(statusAddress, 0);
   };
 
   return {
-    pv_xpu_webgl_device_init_wasm: pvXpuDeviceInit,
-    pv_xpu_webgl_device_mem_alloc_wasm: pvXpuDeviceMemAlloc,
-    pv_xpu_webgl_device_mem_free_wasm: pvXpuDeviceMemFree,
-    pv_matrix_vector_multiply_webgl_wasm: pvXpuMatrixVectorMultiply,
-    pv_xpu_webgl_device_mem_copy_to_xpu_wasm: pvXpuDeviceMemCopyToXpu,
-    pv_xpu_webgl_device_mem_copy_from_xpu_wasm: pvXpuDeviceMemCopyFromXpu
+    pv_xpu_webgpu_device_init_wasm: pvXpuDeviceInit,
+    pv_xpu_webgpu_device_load_shader_wasm: pvXpuDeviceLoadShader,
+    pv_xpu_webgpu_device_mem_alloc_wasm: pvXpuDeviceMemAlloc,
+    pv_xpu_webgpu_device_mem_free_wasm: pvXpuDeviceMemFree,
+    pv_matrix_vector_multiply_webgpu_wasm: pvXpuMatrixVectorMultiply,
+    pv_xpu_webgpu_device_mem_copy_to_xpu_wasm: pvXpuDeviceMemCopyToXpu,
+    pv_xpu_webgpu_device_mem_copy_from_xpu_wasm: pvXpuDeviceMemCopyFromXpu,
   };
 };
 
-export {
-  initXpu
-};
+export { initXpu };
