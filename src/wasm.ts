@@ -361,7 +361,7 @@ export async function buildWasm(
     }
   };
 
-  const xpuImports = initXpu(memory, wasm);
+  const xpuImports = initXpu(memory);
 
   const importObject = {
     // eslint-disable-next-line camelcase

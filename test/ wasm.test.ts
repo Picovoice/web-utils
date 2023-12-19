@@ -24,7 +24,7 @@ describe("WASM Exports", () => {
   let wasmExports: Record<string, Function> = {};
 
   it("should be able to load wasm", () => {
-    cy.readFile("lib/build/pv_web_utils.wasm", "base64").then(async wasmBase64 => {
+    cy.readFile("lib/web-utils/build/pv_web_utils.wasm", "base64").then(async wasmBase64 => {
       wasmExports = await buildWasm(memory, wasmBase64, pvError);
     });
   });

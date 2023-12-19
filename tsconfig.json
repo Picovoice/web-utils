@@ -4,7 +4,7 @@
     "allowSyntheticDefaultImports": true,
     "downlevelIteration": true,
     "isolatedModules": false,
-    "lib": ["esnext", "dom", "es6"],
+    "lib": ["esnext", "dom"],
     "module": "esnext",
     "moduleResolution": "node",
     "noEmit": false,
@@ -13,9 +13,9 @@
     "resolveJsonModule": true,
     "sourceMap": true,
     "strict": true,
-    "target": "es6",
+    "target": "esnext",
     "types": ["node"]
   },
-  "include": ["src"],
+  "include": ["src", "module.d.ts"],
   "exclude": ["node_modules"]
 }

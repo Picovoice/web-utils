@@ -8,6 +8,7 @@ const pkg = require('./package.json');
 const { babel } = require('@rollup/plugin-babel');
 const terser = require('@rollup/plugin-terser');
 const { DEFAULT_EXTENSIONS } = require('@babel/core');
+const base64 = require('./plugins/base64');
 
 const extensions = [...DEFAULT_EXTENSIONS, '.ts'];
 
@@ -67,5 +68,8 @@ export default {
       babelHelpers: 'runtime',
       exclude: '**/node_modules/**',
     }),
+    base64({
+      include: ['./lib/**/*.wasm'],
+    })
   ],
 };

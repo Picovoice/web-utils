@@ -1,6 +1,6 @@
 {
   "name": "@picovoice/web-utils",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "Picovoice web utility functions",
   "author": "Picovoice",
   "license": "Apache-2.0",
@@ -15,7 +15,7 @@
     "lint": "eslint . --ext .js,.ts",
     "prepack": "npm-run-all build",
     "start": "cross-env TARGET='debug' rollup --config --watch",
-    "setup-test": "cmake -DCMAKE_BUILD_TYPE=Release -S lib -B lib/build && cmake --build lib/build",
+    "setup-test": "cmake -DCMAKE_BUILD_TYPE=Release -S lib/web-utils -B lib/web-utils/build && cmake --build lib/web-utils/build",
     "test": "cypress run --browser chrome",
     "watch": "rollup --config --watch"
   },
