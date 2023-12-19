@@ -9,7 +9,7 @@
   specific language governing permissions and limitations under the License.
 */
 
-import { fromPublicDirectory, open } from '../src';
+import { fromPublicDirectory, open } from '../';
 
 const buildData = (size: number) => {
   const data = new Uint8Array(size);
