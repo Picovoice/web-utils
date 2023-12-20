@@ -25,13 +25,16 @@ const PV_XPU_MEM_SETTING_SHARED = 1;
 type XpuType = {
   deviceMem: Set<number>,
   numWorkers: number,
-  workers: Worker[]
+  workers: Worker[],
+  workerActive: boolean[],
+  numParts: number,
 };
 
 type MemType = {
   objAddress: number,
-  isShared: boolean,
-  allocSize: number,
+  // isShared: boolean,
+  // allocSize: number,
+  buffer: Uint8Array,
 };
 
 class PvXpu {
@@ -120,9 +123,11 @@ const initXpu = (
     const wasm = base64ToUint8Array(isSimd ? XpuWasmSimd : XpuWasm);
 
     const workers: Worker[] = [];
+    const workerActive: boolean[] = [];
     for (let i = 0; i < numWorkers; i++) {
       const worker = new XpuWorker();
       workers.push(worker);
+      workerActive.push(false);
       await waitForWorker(worker, {
         action: PvXpuAction.INIT,
         wasm: wasm,
@@ -132,7 +137,9 @@ const initXpu = (
     PvXpu.addXpu(objAddress, {
       deviceMem: new Set(),
       numWorkers: numWorkers,
-      workers: workers
+      workers: workers,
+      workerActive: workerActive,
+      numParts: 512,
     });
     setStatus(statusAddress, 0);
   };
@@ -172,30 +179,31 @@ const initXpu = (
       return;
     }
 
-    const chunkSize = sizeBytes / obj.numWorkers;
-    const workerResults: Promise<any>[] = [];
-    for (let i = 0; i < obj.numWorkers; i++) {
-      if (isShared === PV_XPU_MEM_SETTING_SHARED) {
-        workerResults.push(waitForWorker(obj.workers[i], {
-          action: PvXpuAction.ALLOC,
-          size: sizeBytes,
-          memAddress: memAddress,
-        }));
-      } else {
-        workerResults.push(waitForWorker(obj.workers[i], {
-          action: PvXpuAction.ALLOC,
-          size: chunkSize,
-          memAddress: memAddress,
-        }));
-      }
-    }
-
-    await Promise.all(workerResults);
+    // const chunkSize = sizeBytes / obj.numWorkers;
+    // const workerResults: Promise<any>[] = [];
+    // for (let i = 0; i < obj.numWorkers; i++) {
+    //   if (isShared === PV_XPU_MEM_SETTING_SHARED) {
+    //     workerResults.push(waitForWorker(obj.workers[i], {
+    //       action: PvXpuAction.ALLOC,
+    //       size: sizeBytes,
+    //       memAddress: memAddress,
+    //     }));
+    //   } else {
+    //     workerResults.push(waitForWorker(obj.workers[i], {
+    //       action: PvXpuAction.ALLOC,
+    //       size: chunkSize,
+    //       memAddress: memAddress,
+    //     }));
+    //   }
+    // }
+    //
+    // await Promise.all(workerResults);
 
     PvXpu.addMemory(memAddress, {
       objAddress: objAddress,
-      isShared: isShared === PV_XPU_MEM_SETTING_SHARED,
-      allocSize: sizeBytes,
+      // isShared: isShared === PV_XPU_MEM_SETTING_SHARED,
+      // allocSize: sizeBytes,
+      buffer: new Uint8Array(sizeBytes)
     });
     setStatus(statusAddress, 0);
   };
@@ -205,16 +213,16 @@ const initXpu = (
       const { objAddress } = PvXpu.getMemory(memAddress)!;
       const obj = PvXpu.getXpu(objAddress)!;
 
-      const workerResults: Promise<any>[] = [];
-
-      for (let i = 0; i < obj.numWorkers; i++) {
-        workerResults.push(waitForWorker(obj.workers[i], {
-          action: PvXpuAction.FREE,
-          memAddress: memAddress,
-        }));
-      }
-
-      await Promise.all(workerResults);
+      // const workerResults: Promise<any>[] = [];
+      //
+      // for (let i = 0; i < obj.numWorkers; i++) {
+      //   workerResults.push(waitForWorker(obj.workers[i], {
+      //     action: PvXpuAction.FREE,
+      //     memAddress: memAddress,
+      //   }));
+      // }
+      //
+      // await Promise.all(workerResults);
 
       PvXpu.removeMemory(memAddress);
     }
@@ -226,31 +234,34 @@ const initXpu = (
       return;
     }
 
-    const { objAddress, isShared } = mem;
-    const obj = PvXpu.getXpu(objAddress)!;
-
     const memoryBufferUint8 = new Uint8Array(memory.buffer);
-    const chunkSize = sizeBytes / obj.numWorkers;
+    mem.buffer.set(memoryBufferUint8.slice(hostAddress, hostAddress + sizeBytes));
 
-    const workerResults: Promise<any>[] = [];
-
-    for (let i = 0; i < obj.numWorkers; i++) {
-      if (isShared) {
-        workerResults.push(waitForWorker(obj.workers[i], {
-          action: PvXpuAction.COPY_TO_XPU,
-          memAddress: memAddress,
-          buffer: memoryBufferUint8.slice(hostAddress, hostAddress + sizeBytes)
-        }));
-      } else {
-        workerResults.push(waitForWorker(obj.workers[i], {
-          action: PvXpuAction.COPY_TO_XPU,
-          memAddress: memAddress,
-          buffer: memoryBufferUint8.slice(hostAddress + (i * chunkSize), hostAddress + ((i + 1) * chunkSize))
-        }));
-      }
-    }
-
-    await Promise.all(workerResults);
+    // const { objAddress, isShared } = mem;
+    // const obj = PvXpu.getXpu(objAddress)!;
+    //
+    // const memoryBufferUint8 = new Uint8Array(memory.buffer);
+    // const chunkSize = sizeBytes / obj.numWorkers;
+    //
+    // const workerResults: Promise<any>[] = [];
+    //
+    // for (let i = 0; i < obj.numWorkers; i++) {
+    //   if (isShared) {
+    //     workerResults.push(waitForWorker(obj.workers[i], {
+    //       action: PvXpuAction.COPY_TO_XPU,
+    //       memAddress: memAddress,
+    //       buffer: memoryBufferUint8.slice(hostAddress, hostAddress + sizeBytes)
+    //     }));
+    //   } else {
+    //     workerResults.push(waitForWorker(obj.workers[i], {
+    //       action: PvXpuAction.COPY_TO_XPU,
+    //       memAddress: memAddress,
+    //       buffer: memoryBufferUint8.slice(hostAddress + (i * chunkSize), hostAddress + ((i + 1) * chunkSize))
+    //     }));
+    //   }
+    // }
+    //
+    // await Promise.all(workerResults);
   };
 
   const pvXpuDeviceMemCopyFromXpu = async (memAddress: number, hostAddress: number, sizeBytes: number): Promise<void> => {
@@ -259,34 +270,45 @@ const initXpu = (
       return;
     }
 
-    const { objAddress, allocSize } = mem;
-    const obj = PvXpu.getXpu(objAddress)!;
-
     const memoryBufferUint8 = new Uint8Array(memory.buffer);
-    const workerResults: Promise<any>[] = [];
-    const chunkSize = allocSize / obj.numWorkers;
+    memoryBufferUint8.set(mem.buffer.slice(0, sizeBytes), hostAddress);
 
-    for (let i = 0; i < obj.numWorkers; i++) {
-      workerResults.push(waitForWorker(obj.workers[i], {
-        action: PvXpuAction.COPY_FROM_XPU,
-        memAddress: memAddress,
-        size: chunkSize,
-      }));
-    }
-
-    const results = await Promise.all(workerResults);
-
-    let copied = 0;
-    for (let i = 0; i < obj.numWorkers; i++) {
-      const result = results[i];
-      if ((copied + result.length) > sizeBytes) {
-        memoryBufferUint8.set(result.slice(0, sizeBytes - copied), hostAddress + copied);
-        break;
-      } else {
-        memoryBufferUint8.set(result, hostAddress + copied);
-        copied += result.length;
-      }
-    }
+    // const { objAddress, allocSize, isShared } = mem;
+    // const obj = PvXpu.getXpu(objAddress)!;
+    //
+    // const memoryBufferUint8 = new Uint8Array(memory.buffer);
+    // const workerResults: Promise<any>[] = [];
+    // const chunkSize = allocSize / obj.numWorkers;
+    //
+    // if (isShared) {
+    //   workerResults.push(waitForWorker(obj.workers[0], {
+    //     action: PvXpuAction.COPY_FROM_XPU,
+    //     memAddress: memAddress,
+    //     size: allocSize,
+    //   }));
+    // } else {
+    //   for (let i = 0; i < obj.numWorkers; i++) {
+    //     workerResults.push(waitForWorker(obj.workers[i], {
+    //       action: PvXpuAction.COPY_FROM_XPU,
+    //       memAddress: memAddress,
+    //       size: chunkSize,
+    //     }));
+    //   }
+    // }
+    //
+    // const results = await Promise.all(workerResults);
+    //
+    // let copied = 0;
+    // for (let i = 0; i < results.length; i++) {
+    //   const result = results[i];
+    //   if ((copied + result.length) > sizeBytes) {
+    //     memoryBufferUint8.set(result.slice(0, sizeBytes - copied), hostAddress + copied);
+    //     break;
+    //   } else {
+    //     memoryBufferUint8.set(result, hostAddress + copied);
+    //     copied += result.length;
+    //   }
+    // }
   };
 
   const pvXpuMatrixVectorMultiply = async (
@@ -306,52 +328,114 @@ const initXpu = (
       return;
     }
 
-    const numWorkers = obj.numWorkers;
-    const chunkSize = m / numWorkers;
+    const matrixBuffer = new Uint8Array(PvXpu.getMemory(matrixAddress)!.buffer.buffer);
+    const vectorBuffer = new Float32Array(PvXpu.getMemory(vectorAddress)!.buffer.buffer);
+    const resultBuffer = new Float32Array(PvXpu.getMemory(resultAddress)!.buffer.buffer);
 
-    let workerResults: Promise<any>[] = [];
+    // const numWorkers = obj.numWorkers;
+    // const chunkSize = m / numWorkers;
+    //
+    // let workerResults: Promise<any>[] = [];
+
+    const getAvailableWorker = (): Promise<[Worker, number]> => {
+      return new Promise(resolve => {
+        const interval = setInterval(() => {
+          for (let i = 0; i < obj.numWorkers; i++) {
+            if (!obj.workerActive[i]) {
+              obj.workerActive[i] = true;
+              clearInterval(interval);
+              resolve([obj.workers[i], i]);
+              return;
+            }
+          }
+        });
+      });
+    };
+
     let workerProcTime = 0;
+
+    const processWorker = (worker: Worker, index: number, message: any): Promise<void> => {
+      worker.postMessage(message);
+
+      return new Promise(resolve => {
+        worker.onmessage = (e) => {
+          if (e.data && e.data.result && e.data.offset !== undefined) {
+            resultBuffer.set(e.data.result, e.data.offset);
+            obj.workerActive[index] = false;
+            workerProcTime += e.data.procSec;
+          } else {
+            console.log(e.data)
+            obj.workerActive[index] = false;
+          }
+          resolve();
+        };
+      });
+    };
+
+    let processed = 0;
+    const jobs = [];
+
+    const n_real = n / 2;
 
     const before3 = Date.now() / 1000;
 
-    for (let i = 0; i < numWorkers; i++) {
-      workerResults.push(waitForWorker(obj.workers[i], {
+    while (processed < m) {
+      const [worker, index] = await getAvailableWorker();
+      const slicedMatrix = matrixBuffer.slice(processed * n_real, (processed + obj.numParts) * n_real)
+
+      jobs.push(
+      processWorker(worker, index, {
         action: PvXpuAction.MATRIX_VECTOR_MULTIPLY,
-        matrixAddress: matrixAddress,
-        vectorAddress: vectorAddress,
-        m: chunkSize,
-        n: n,
-        resultAddress: resultAddress,
+        matrix: slicedMatrix,
+        vector: vectorBuffer,
+        offset: processed
       }));
+
+      processed += obj.numParts;
     }
 
-    const resultBuffer = new Float32Array(n);
-    const results = await Promise.all(workerResults);
+    await Promise.all(jobs);
 
-    for (let i = 0; i < results.length; i++) {
-      resultBuffer.set(results[i].buffer, i * chunkSize);
-      workerProcTime += results[i].procSec;
-    }
+    // for (let i = 0; i < numWorkers; i++) {
+    //   workerResults.push(waitForWorker(obj.workers[i], {
+    //     action: PvXpuAction.MATRIX_VECTOR_MULTIPLY,
+    //     matrixAddress: matrixAddress,
+    //     vectorAddress: vectorAddress,
+    //     m: chunkSize,
+    //     n: n,
+    //     resultAddress: resultAddress,
+    //   }));
+    // }
+    //
+    // const resultBuffer = new Float32Array(n);
+    // const results = await Promise.all(workerResults);
+    //
+    // for (let i = 0; i < results.length; i++) {
+    //   resultBuffer.set(results[i].buffer, i * chunkSize);
+    //   if (results[i].procSec > workerProcTime) {
+    //     workerProcTime = results[i].procSec;
+    //   }
+    // }
 
     const after3 = Date.now() / 1000;
 
     const before2 = Date.now() / 1000;
 
-    workerResults = [];
-    for (let i = 0; i < numWorkers; i++) {
-      workerResults.push(waitForWorker(obj.workers[i], {
-        action: PvXpuAction.SYNC_VECTOR,
-        vectorAddress: resultAddress,
-        buffer: resultBuffer,
-      }));
-    }
-    await Promise.all(workerResults);
+    // workerResults = [];
+    // for (let i = 0; i < numWorkers; i++) {
+    //   workerResults.push(waitForWorker(obj.workers[i], {
+    //     action: PvXpuAction.SYNC_VECTOR,
+    //     vectorAddress: resultAddress,
+    //     buffer: resultBuffer,
+    //   }));
+    // }
+    // await Promise.all(workerResults);
 
     const after2 = Date.now() / 1000;
 
     const after = Date.now() / 1000;
     total.push(after - before);
-    workerTotal.push(workerProcTime / obj.numWorkers);
+    workerTotal.push(workerProcTime);
     totalSync.push(after2 - before2);
     totalResult.push(after3 - before3);
   };
