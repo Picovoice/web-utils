@@ -13,79 +13,35 @@
 
 import { PvXpuAction } from './pv_xpu_types';
 
-// const matrixVectorMultiply = (data: any) => {
-//   try {
-//     const before = Date.now() / 1000;
-//
-//     const { exports, memAlloc, memory } = data.globals;
-//     const { matrixAddress, vectorAddress, m, n, resultAddress } = data;
-//     const { pv_matrix_vector_multiply } = exports;
-//
-//     const memoryBufferFloat32 = new Float32Array(memory.buffer);
-//
-//     const { workerMemAddress: workerMatrixAddress } = memAlloc.get(matrixAddress)!;
-//     const { workerMemAddress: workerVectorAddress } = memAlloc.get(vectorAddress)!;
-//     const { workerMemAddress: workerResultAddress } = memAlloc.get(resultAddress)!;
-//
-//     pv_matrix_vector_multiply(workerMatrixAddress, workerVectorAddress, m, n, workerResultAddress);
-//
-//     const after = Date.now() / 1000;
-//
-//     const result = memoryBufferFloat32.slice(
-//       workerResultAddress / Float32Array.BYTES_PER_ELEMENT,
-//       (workerResultAddress / Float32Array.BYTES_PER_ELEMENT) + m
-//     );
-//
-//     self.postMessage({
-//       command: 'ok',
-//       result: {
-//         buffer: result,
-//         procSec: after - before
-//       }
-//     });
-//   } catch (e: any) {
-//     self.postMessage({
-//       command: 'error',
-//       message: e.message
-//     });
-//   }
-// };
-
 const matrixVectorMultiply = (data: any) => {
   try {
-    const { memAlloc, memory, exports } = data.globals;
-    const { matrix, vector, offset } = data;
-    const { aligned_alloc, pv_matrix_vector_multiply, free } = exports!;
-
-    const m = matrix.length / vector.length * 2;
-
-    const matrixAddress = aligned_alloc(Uint8Array.BYTES_PER_ELEMENT, matrix.length * Uint8Array.BYTES_PER_ELEMENT);
-    const vectorAddress = aligned_alloc(Float32Array.BYTES_PER_ELEMENT, vector.length * Float32Array.BYTES_PER_ELEMENT);
-    const resultAddress = aligned_alloc(Float32Array.BYTES_PER_ELEMENT, m * Float32Array.BYTES_PER_ELEMENT);
-
-    const memoryBufferUint8 = new Uint8Array(memory.buffer);
-    const memoryBufferFloat32 = new Float32Array(memory.buffer);
-
-    memoryBufferUint8.set(matrix, matrixAddress);
-    memoryBufferFloat32.set(vector, vectorAddress / Float32Array.BYTES_PER_ELEMENT);
-
     const before = Date.now() / 1000;
 
-    pv_matrix_vector_multiply(matrixAddress, vectorAddress, m, vector.length, resultAddress);
+    const { exports, memAlloc, memory } = data.globals;
+    const { matrixAddress, vectorAddress, m, n, resultAddress } = data;
+    const { pv_matrix_vector_multiply } = exports;
+
+    const memoryBufferFloat32 = new Float32Array(memory.buffer);
+
+    const { workerMemAddress: workerMatrixAddress } = memAlloc.get(matrixAddress)!;
+    const { workerMemAddress: workerVectorAddress } = memAlloc.get(vectorAddress)!;
+    const { workerMemAddress: workerResultAddress } = memAlloc.get(resultAddress)!;
+
+    pv_matrix_vector_multiply(workerMatrixAddress, workerVectorAddress, m, n, workerResultAddress);
 
     const after = Date.now() / 1000;
 
-    const result = memoryBufferFloat32.slice(resultAddress / Float32Array.BYTES_PER_ELEMENT, (resultAddress / Float32Array.BYTES_PER_ELEMENT) + m);
-
-    free(matrixAddress);
-    free(vectorAddress);
-    free(resultAddress);
+    const result = memoryBufferFloat32.slice(
+      workerResultAddress / Float32Array.BYTES_PER_ELEMENT,
+      (workerResultAddress / Float32Array.BYTES_PER_ELEMENT) + m
+    );
 
     self.postMessage({
       command: 'ok',
-      result: result,
-      offset: offset,
-      procSec: after - before
+      result: {
+        buffer: result,
+        procSec: after - before
+      }
     });
   } catch (e: any) {
     self.postMessage({
@@ -93,7 +49,7 @@ const matrixVectorMultiply = (data: any) => {
       message: e.message
     });
   }
-}
+};
 
 const syncVector = (data: any) => {
   try {
