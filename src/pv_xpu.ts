@@ -14,8 +14,10 @@
 const gpuDevices = new Map<
   number,
   {
-    gpuDevice: GPUDevice;
-    deviceAddresses: Set<number>;
+    device: GPUDevice;
+    bindGroupLayout?: GPUBindGroupLayout;
+    pipeline?: GPUComputePipeline;
+    metadataBuffer?: GPUBuffer;
   }
 >();
 
@@ -24,24 +26,11 @@ const gpuBuffers = new Map<
   {
     deviceAddress: number;
     buffer: GPUBuffer;
+    stageBuffer?: GPUBuffer;
   }
 >();
 
-const gpuStagingBuffers = new Map<
-  number,
-  {
-    deviceAddress: number;
-    buffer: GPUBuffer;
-  }
->();
-
-const gpuShaders = new Map<
-  number,
-  {
-    bindGroupLayout: GPUBindGroupLayout;
-    pipeline: GPUComputePipeline;
-  }
->();
+const WORKGROUP_SIZE = 16;
 
 const shaderSource = `
 @group(0) @binding(0)
@@ -53,15 +42,15 @@ var<storage, read> vector: array<f32>;
 @group(0) @binding(2)
 var<storage, read_write> result: array<f32>;
 
-struct MetaData {
+struct Metadata {
   m: u32,  
   n_real: u32,
 }
 
 @group(0) @binding(3)
-var<storage, read> metadata: MetaData;
+var<uniform> metadata: Metadata;
 
-@compute @workgroup_size(16)
+@compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(
   @builtin(global_invocation_id)
   global_id : vec3u,
@@ -70,27 +59,28 @@ fn main(
     if (i >= metadata.m) {
         return;
     }
-                
-    var sum : f32 = 0;
+
+    var sum: f32 = 0.0;
     for (var j: u32 = 0u; j < metadata.n_real; j = j + 1u) {
-        var matrix_value: u32 = matrix[(i * metadata.n_real) + j];
-        var val_1 : f32 = f32(0x0000000F & (matrix_value >> 0u));
-        var val_2 : f32 = f32(0x0000000F & (matrix_value >> 4u));
-        var val_3 : f32 = f32(0x0000000F & (matrix_value >> 8u));
-        var val_4 : f32 = f32(0x0000000F & (matrix_value >> 12u));
-        var val_5 : f32 = f32(0x0000000F & (matrix_value >> 16u));
-        var val_6 : f32 = f32(0x0000000F & (matrix_value >> 20u));
-        var val_7 : f32 = f32(0x0000000F & (matrix_value >> 24u));
-        var val_8 : f32 = f32(0x0000000F & (matrix_value >> 28u));        
+        let matrix_value: u32 = matrix[(i * metadata.n_real) + j];
+        let val_1 : f32 = f32(extractBits(matrix_value, 0u, 4u));
+        let val_2 : f32 = f32(extractBits(matrix_value, 4u, 4u));
+        let val_3 : f32 = f32(extractBits(matrix_value, 8u, 4u));
+        let val_4 : f32 = f32(extractBits(matrix_value, 12u, 4u));
+        let val_5 : f32 = f32(extractBits(matrix_value, 16u, 4u));
+        let val_6 : f32 = f32(extractBits(matrix_value, 20u, 4u));
+        let val_7 : f32 = f32(extractBits(matrix_value, 24u, 4u));
+        let val_8 : f32 = f32(extractBits(matrix_value, 28u, 4u));
         
-        sum = sum + (val_1 * vector[(j * 8u) + 0u]);
-        sum = sum + (val_2 * vector[(j * 8u) + 1u]);
-        sum = sum + (val_3 * vector[(j * 8u) + 2u]);
-        sum = sum + (val_4 * vector[(j * 8u) + 3u]);
-        sum = sum + (val_5 * vector[(j * 8u) + 4u]);
-        sum = sum + (val_6 * vector[(j * 8u) + 5u]);
-        sum = sum + (val_7 * vector[(j * 8u) + 6u]);
-        sum = sum + (val_8 * vector[(j * 8u) + 7u]);        
+        let vector_index: u32 = j * 8u;
+        sum += (val_1 * vector[vector_index]);
+        sum += (val_2 * vector[vector_index + 1u]);
+        sum += (val_3 * vector[vector_index + 2u]);
+        sum += (val_4 * vector[vector_index + 3u]);
+        sum += (val_5 * vector[vector_index + 4u]);
+        sum += (val_6 * vector[vector_index + 5u]);
+        sum += (val_7 * vector[vector_index + 6u]);
+        sum += (val_8 * vector[vector_index + 7u]);        
     }
     
     result[i] = sum;
@@ -134,22 +124,32 @@ const initXpu = (
         return;
       }
 
-      const device = await adapter!.requestDevice();
+      const device = await adapter.requestDevice();
       if (!device) {
         console.error('Could not find WebGPU GPU device.');
         setStatus(statusAddress, -1);
         return;
       }
 
-      gpuDevices.set(objAddress, {
-        gpuDevice: device,
-        deviceAddresses: new Set(),
-      });
+      gpuDevices.set(objAddress, { device });
       setStatus(statusAddress, 0);
     } catch (e) {
       console.error(e);
       setStatus(statusAddress, -1);
     }
+  };
+
+  const pvXpuDeviceCleanup = (objAddress: number) => {
+    const obj = gpuDevices.get(objAddress);
+    if (!obj) {
+      return;
+    }
+
+    if (obj.metadataBuffer) {
+      obj.metadataBuffer.destroy();
+    }
+
+    gpuDevices.delete(objAddress);
   };
 
   const pvXpuDeviceLoadShader = (
@@ -165,7 +165,7 @@ const initXpu = (
       return;
     }
 
-    const bindGroupLayout = obj.gpuDevice.createBindGroupLayout({
+    obj.bindGroupLayout = obj.device.createBindGroupLayout({
       entries: [
         {
           binding: 0,
@@ -185,18 +185,19 @@ const initXpu = (
         {
           binding: 3,
           visibility: GPUShaderStage.COMPUTE,
-          buffer: { type: 'read-only-storage' },
+          buffer: { type: 'uniform' },
         },
       ],
     });
 
-    const pipelineLayout = obj.gpuDevice.createPipelineLayout({
-      bindGroupLayouts: [bindGroupLayout],
+    const pipelineLayout = obj.device.createPipelineLayout({
+      bindGroupLayouts: [obj.bindGroupLayout],
     });
-    const shaderModule = obj.gpuDevice.createShaderModule({
+    const shaderModule = obj.device.createShaderModule({
       code: shaderSource,
     });
-    const pipeline = obj.gpuDevice.createComputePipeline({
+
+    obj.pipeline = obj.device.createComputePipeline({
       layout: pipelineLayout,
       compute: {
         module: shaderModule,
@@ -204,7 +205,10 @@ const initXpu = (
       },
     });
 
-    gpuShaders.set(objAddress, { bindGroupLayout, pipeline });
+    obj.metadataBuffer = obj.device.createBuffer({
+      size: 2 * Uint32Array.BYTES_PER_ELEMENT,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
 
     setStatus(statusAddress, 0);
   };
@@ -213,9 +217,7 @@ const initXpu = (
     objAddress: number,
     memAddress: number,
     sizeBytes: number,
-    isCopySrc: boolean,
-    isMapped: boolean,
-    createStagedBuffer: boolean,
+    isOutput: boolean,
     statusAddress: number
   ): void => {
     const obj = gpuDevices.get(objAddress);
@@ -224,75 +226,69 @@ const initXpu = (
       setStatus(statusAddress, -1);
       return;
     }
-    obj.deviceAddresses.add(memAddress);
 
-    let usage = GPUBufferUsage.STORAGE;
-    if (isCopySrc) {
+    let usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
+    if (isOutput) {
       usage |= GPUBufferUsage.COPY_SRC;
     }
+
     gpuBuffers.set(memAddress, {
       deviceAddress: objAddress,
-      buffer: obj.gpuDevice.createBuffer({
-        mappedAtCreation: isMapped,
+      buffer: obj.device.createBuffer({
         size: sizeBytes * Uint8Array.BYTES_PER_ELEMENT,
         usage,
       }),
+      stageBuffer: isOutput
+        ? obj.device.createBuffer({
+            size: sizeBytes * Uint8Array.BYTES_PER_ELEMENT,
+            usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+          })
+        : undefined,
     });
 
-    if (createStagedBuffer) {
-      gpuStagingBuffers.set(memAddress, {
-        deviceAddress: objAddress,
-        buffer: obj.gpuDevice.createBuffer({
-          size: sizeBytes * Uint8Array.BYTES_PER_ELEMENT,
-          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-        }),
-      });
-    }
     setStatus(statusAddress, 0);
   };
 
   const pvXpuDeviceMemFree = (memAddress: number): void => {
     if (gpuBuffers.has(memAddress)) {
-      const { deviceAddress, buffer } = gpuBuffers.get(memAddress)!;
+      const { buffer, stageBuffer } = gpuBuffers.get(memAddress)!;
       buffer.destroy();
+      if (stageBuffer) {
+        stageBuffer.destroy();
+      }
 
-      gpuDevices.get(deviceAddress)?.deviceAddresses.delete(memAddress);
       gpuBuffers.delete(memAddress);
-    }
-
-    if (gpuStagingBuffers.has(memAddress)) {
-      const { deviceAddress, buffer } = gpuStagingBuffers.get(memAddress)!;
-      buffer.destroy();
-
-      gpuDevices.get(deviceAddress)?.deviceAddresses.delete(memAddress);
-      gpuStagingBuffers.delete(memAddress);
     }
   };
 
-  const pvXpuDeviceMemCopyToXpu = (
+  const pvXpuDeviceMemCopyToXpu = async (
     memAddress: number,
     hostAddress: number,
     sizeBytes: number
-  ): void => {
+  ): Promise<void> => {
     if (hostAddress < 0) {
-      console.error('invalid host address', memAddress, hostAddress, sizeBytes);
+      console.error('Invalid host address', memAddress, hostAddress, sizeBytes);
       return;
     }
 
-    const { deviceAddress, buffer } = gpuBuffers.get(memAddress)!;
+    const gpuBuffer = gpuBuffers.get(memAddress);
+    if (!gpuBuffer || !gpuBuffer.buffer || !gpuBuffer.deviceAddress) {
+      console.error('GPU buffer has not been allocated');
+      return;
+    }
 
-    const obj = gpuDevices.get(deviceAddress);
+    const obj = gpuDevices.get(gpuBuffer.deviceAddress);
     if (!obj) {
       console.error('WebGPU device has not been initialized');
       return;
     }
 
     const memoryBufferUint8 = new Uint8Array(memory.buffer);
-    const bufferMap = new Uint8Array(buffer.getMappedRange());
-    bufferMap.set(
+    obj.device.queue.writeBuffer(
+      gpuBuffer.buffer,
+      0,
       memoryBufferUint8.slice(hostAddress, hostAddress + sizeBytes)
     );
-    buffer.unmap();
   };
 
   const pvXpuDeviceMemCopyFromXpu = async (
@@ -301,27 +297,29 @@ const initXpu = (
     sizeBytes: number
   ): Promise<void> => {
     if (hostAddress < 0) {
-      console.error('invalid host address', memAddress, hostAddress, sizeBytes);
+      console.error('Invalid host address', memAddress, hostAddress, sizeBytes);
       return;
     }
 
-    const { deviceAddress, buffer } = gpuStagingBuffers.get(memAddress)!;
-    if (!buffer) {
-      console.error('Staging buffer has not been allocated');
+    const gpuBuffer = gpuBuffers.get(memAddress);
+    if (!gpuBuffer?.buffer || !gpuBuffer?.stageBuffer) {
+      console.error('GPU buffer has not been allocated');
       return;
     }
 
-    const obj = gpuDevices.get(deviceAddress);
+    const obj = gpuDevices.get(gpuBuffer.deviceAddress);
     if (!obj) {
       console.error('WebGPU device has not been initialized');
       return;
     }
 
-    await buffer!.mapAsync(GPUMapMode.READ, 0, sizeBytes);
-    const mappedBuffer = new Uint8Array(buffer!.getMappedRange(0, sizeBytes));
+    await gpuBuffer.stageBuffer.mapAsync(GPUMapMode.READ, 0, sizeBytes);
+    const mappedBuffer = new Uint8Array(
+      gpuBuffer.stageBuffer.getMappedRange(0, sizeBytes)
+    );
     const memoryBufferUint8 = new Uint8Array(memory.buffer);
     memoryBufferUint8.set(mappedBuffer.slice(0, sizeBytes), hostAddress);
-    buffer!.unmap();
+    gpuBuffer.stageBuffer.unmap();
   };
 
   const pvXpuMatrixVectorMultiply = async (
@@ -334,30 +332,44 @@ const initXpu = (
     statusAddress: number
   ): Promise<void> => {
     const obj = gpuDevices.get(objAddress);
-    if (!obj) {
+    if (!obj || !obj.device) {
       console.error('WebGPU device has not been initialized');
       setStatus(statusAddress, -1);
       return;
     }
 
-    const n_real = Math.ceil(n / 8);
-    const metadataArray = new Uint32Array([m, n_real]);
-    const metadataBuffer = obj.gpuDevice.createBuffer({
-      mappedAtCreation: true,
-      size: 2 * Uint32Array.BYTES_PER_ELEMENT,
-      usage: GPUBufferUsage.STORAGE,
-    });
-    const bufferMap = new Uint32Array(metadataBuffer.getMappedRange());
-    bufferMap.set(metadataArray);
-    metadataBuffer.unmap();
+    if (!obj.metadataBuffer || !obj.bindGroupLayout || !obj.pipeline) {
+      console.error('Shader has not been loaded');
+      setStatus(statusAddress, -1);
+      return;
+    }
 
-    const { bindGroupLayout, pipeline } = gpuShaders.get(objAddress)!;
-    const matrixBuffer = gpuBuffers.get(matrixAddress)!.buffer;
-    const vectorBuffer = gpuBuffers.get(vectorAddress)!.buffer;
-    const resultBuffer = gpuBuffers.get(resultAddress)!.buffer;
+    const metadataArray = new Uint32Array([m, Math.ceil(n / 8)]);
+    obj.device.queue.writeBuffer(obj.metadataBuffer, 0, metadataArray);
 
-    const bindGroup = obj.gpuDevice.createBindGroup({
-      layout: bindGroupLayout,
+    const matrixBuffer = gpuBuffers.get(matrixAddress)?.buffer;
+    if (!matrixBuffer) {
+      console.error('Matrix buffer has not been allocated');
+      setStatus(statusAddress, -1);
+      return;
+    }
+
+    const vectorBuffer = gpuBuffers.get(vectorAddress)?.buffer;
+    if (!vectorBuffer) {
+      console.error('Vector buffer has not been allocated');
+      setStatus(statusAddress, -1);
+      return;
+    }
+
+    const resultBuffers = gpuBuffers.get(resultAddress);
+    if (!resultBuffers?.buffer || !resultBuffers?.stageBuffer) {
+      console.error('Result vector buffer has not been allocated');
+      setStatus(statusAddress, -1);
+      return;
+    }
+
+    const bindGroup = obj.device.createBindGroup({
+      layout: obj.bindGroupLayout,
       entries: [
         {
           binding: 0,
@@ -369,27 +381,27 @@ const initXpu = (
         },
         {
           binding: 2,
-          resource: { buffer: resultBuffer },
+          resource: { buffer: resultBuffers.buffer },
         },
-        { binding: 3, resource: { buffer: metadataBuffer } },
+        { binding: 3, resource: { buffer: obj.metadataBuffer! } },
       ],
     });
 
-    const commandEncoder = obj.gpuDevice.createCommandEncoder();
+    const commandEncoder = obj.device.createCommandEncoder();
     const passEncoder = commandEncoder.beginComputePass();
     passEncoder.setBindGroup(0, bindGroup);
-    passEncoder.setPipeline(pipeline);
-    passEncoder.dispatchWorkgroups(Math.ceil(m / 16));
+    passEncoder.setPipeline(obj.pipeline);
+    passEncoder.dispatchWorkgroups(Math.ceil(m / WORKGROUP_SIZE));
     passEncoder.end();
 
     commandEncoder.copyBufferToBuffer(
-      resultBuffer,
+      resultBuffers.buffer,
       0,
-      gpuStagingBuffers.get(resultAddress)!.buffer,
+      resultBuffers.stageBuffer,
       0,
-      m * Float32Array.BYTES_PER_ELEMENT
+      resultBuffers.stageBuffer.size
     );
-    obj.gpuDevice.queue.submit([commandEncoder.finish()]);
+    obj.device.queue.submit([commandEncoder.finish()]);
 
     setStatus(statusAddress, 0);
   };
@@ -402,6 +414,7 @@ const initXpu = (
     pv_matrix_vector_multiply_webgpu_wasm: pvXpuMatrixVectorMultiply,
     pv_xpu_webgpu_device_mem_copy_to_xpu_wasm: pvXpuDeviceMemCopyToXpu,
     pv_xpu_webgpu_device_mem_copy_from_xpu_wasm: pvXpuDeviceMemCopyFromXpu,
+    pv_xpu_webgpu_device_cleanup_wasm: pvXpuDeviceCleanup,
   };
 };
 
