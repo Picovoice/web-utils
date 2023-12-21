@@ -362,7 +362,7 @@ const initXpu = (
     }
 
     const resultBuffers = gpuBuffers.get(resultAddress);
-    if (!resultBuffers?.buffer || !resultBuffers?.stageBuffer) {
+    if (!resultBuffers || !resultBuffers.buffer || !resultBuffers.stageBuffer) {
       console.error('Result vector buffer has not been allocated');
       setStatus(statusAddress, -1);
       return;
