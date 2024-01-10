@@ -35,12 +35,14 @@ export type pv_free_type = (ptr: number) => Promise<void>;
  * @param memory Initialized WebAssembly memory object.
  * @param wasm The wasm file in base64 string or stream to public path (i.e. fetch("file.wasm")) to initialize.
  * @param pvError The PvError object to store error details.
+ * @param additionalImports Extra WASM imports.
  * @returns An object containing the exported functions from WASM.
  */
 export async function buildWasm(
   memory: WebAssembly.Memory,
   wasm: string | Promise<Response>,
-  pvError?: PvError
+  pvError?: PvError,
+  additionalImports: Record<string, any> = {},
 ): Promise<any> {
   const memoryBufferUint8 = new Uint8Array(memory.buffer);
   const memoryBufferInt32 = new Int32Array(memory.buffer);
@@ -376,7 +378,8 @@ export async function buildWasm(
       pv_file_write_wasm: pvFileWriteWasm,
       pv_file_seek_wasm: pvFileSeekWasm,
       pv_file_tell_wasm: pvFileTellWasm,
-      pv_file_remove_wasm: pvFileRemoveWasm
+      pv_file_remove_wasm: pvFileRemoveWasm,
+      ...additionalImports
     },
   };
 
