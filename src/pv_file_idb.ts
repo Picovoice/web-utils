@@ -355,7 +355,7 @@ export class PvFileIDB extends PvFile {
    * @param page The page number to format.
    */
   private static createPage(page: number) {
-    return ("000" + page).slice(-4);
+    return ("00000" + page).slice(-6);
   }
 
   /**
