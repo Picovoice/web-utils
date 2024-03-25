@@ -15,6 +15,18 @@ import { PvFileMem } from './pv_file_mem';
 import { PvModel } from './types';
 
 /**
+ * Cast a signed address to unsigned address.
+ *
+ * @param address The address to cast to unsigned address.
+ */
+export function unsignedAddress(address: number) {
+  if (address < 0) {
+    return address >>> 0;
+  }
+  return address;
+}
+
+/**
  * Convert a null terminated phrase stored inside an array buffer to a string
  *
  * @param arrayBuffer input array buffer

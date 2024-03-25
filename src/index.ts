@@ -25,6 +25,7 @@ import {
   loadModel,
   stringHeaderToObject,
   open,
+  unsignedAddress,
 } from './utils';
 
 import { PvFile } from './pv_file';
@@ -61,6 +62,7 @@ export {
   fromBase64,
   fromPublicDirectory,
   loadModel,
+  unsignedAddress,
   // PvFile
   open,
   dbConfig,

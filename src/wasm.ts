@@ -18,7 +18,8 @@ import {
   base64ToUint8Array,
   fetchWithTimeout,
   stringHeaderToObject,
-  open
+  open,
+  unsignedAddress,
 } from './utils';
 
 import { PvFile } from "./pv_file";
@@ -44,10 +45,23 @@ export async function buildWasm(
   pvError?: PvError,
   additionalImports: Record<string, any> = {},
 ): Promise<any> {
-  const memoryBufferUint8 = new Uint8Array(memory.buffer);
-  const memoryBufferInt32 = new Int32Array(memory.buffer);
+  const setInt = (address: number, value: number) => {
+    const memoryBufferInt32 = new Int32Array(memory.buffer);
+    memoryBufferInt32[
+      address / Int32Array.BYTES_PER_ELEMENT
+    ] = value;
+  };
+
+  const alignedAlloc = async function (alignment: number, size: number) {
+    // eslint-disable-next-line
+    const pointer = await aligned_alloc(alignment, size);
+    return unsignedAddress(pointer);
+  };
 
   const pvConsoleLogWasm = function (index: number): void {
+    index = unsignedAddress(index);
+
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
     // eslint-disable-next-line no-console
     console.log(arrayBufferToStringAtIndex(memoryBufferUint8, index));
   };
@@ -57,6 +71,9 @@ export async function buildWasm(
     line: number,
     fileNameAddress: number
   ): void {
+    fileNameAddress = unsignedAddress(fileNameAddress);
+
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
     if (expr === 0) {
       const fileName = arrayBufferToStringAtIndex(
         memoryBufferUint8,
@@ -81,6 +98,17 @@ export async function buildWasm(
     responseSizeAddress: number,
     responseCodeAddress: number
   ): Promise<void> {
+    httpMethodAddress = unsignedAddress(httpMethodAddress);
+    serverNameAddress = unsignedAddress(serverNameAddress);
+    endpointAddress = unsignedAddress(endpointAddress);
+    headerAddress = unsignedAddress(headerAddress);
+    bodyAddress = unsignedAddress(bodyAddress);
+    responseAddressAddress = unsignedAddress(responseAddressAddress);
+    responseSizeAddress = unsignedAddress(responseSizeAddress);
+    responseCodeAddress = unsignedAddress(responseCodeAddress);
+
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
+
     const httpMethod = arrayBufferToStringAtIndex(
       memoryBufferUint8,
       httpMethodAddress
@@ -137,55 +165,47 @@ export async function buildWasm(
     }
 
     // eslint-disable-next-line
-    const responseAddress = await aligned_alloc(
+    const responseAddress = await alignedAlloc(
       Int8Array.BYTES_PER_ELEMENT,
       (responseText.length + 1) * Int8Array.BYTES_PER_ELEMENT
     );
     if (responseAddress === 0) {
       pvError?.addError('pvMallocError', "pvHttpsRequestWasm: cannot allocate memory for response");
-      memoryBufferInt32[
-        responseAddressAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
+      setInt(responseAddressAddress, 0);
       return;
     }
 
-    memoryBufferInt32[
-      responseSizeAddress / Int32Array.BYTES_PER_ELEMENT
-    ] = responseText.length + 1;
-    memoryBufferInt32[
-      responseAddressAddress / Int32Array.BYTES_PER_ELEMENT
-    ] = responseAddress;
+    setInt(responseSizeAddress, responseText.length + 1);
+    setInt(responseAddressAddress, responseAddress);
 
     for (let i = 0; i < responseText.length; i++) {
       memoryBufferUint8[responseAddress + i] = responseText.charCodeAt(i);
     }
     memoryBufferUint8[responseAddress + responseText.length] = 0;
 
-    memoryBufferInt32[
-      responseCodeAddress / Int32Array.BYTES_PER_ELEMENT
-    ] = statusCode;
+    setInt(responseCodeAddress, statusCode);
   };
 
   const pvGetBrowserInfo = async function (browserInfoAddressAddress: number): Promise<void> {
+    browserInfoAddressAddress = unsignedAddress(browserInfoAddressAddress);
+
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
+
     const userAgent =
       navigator.userAgent !== undefined ? navigator.userAgent : 'unknown';
     // eslint-disable-next-line
-    const browserInfoAddress = await aligned_alloc(
+    const browserInfoAddress = await alignedAlloc(
       Uint8Array.BYTES_PER_ELEMENT,
       (userAgent.length + 1) * Uint8Array.BYTES_PER_ELEMENT
     );
 
     if (browserInfoAddress === 0) {
       pvError?.addError('pvMallocError', "pvGetBrowserInfo: cannot allocate memory for browser info");
-      memoryBufferInt32[
-        browserInfoAddressAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
+      setInt(browserInfoAddressAddress, 0);
       return;
     }
 
-    memoryBufferInt32[
-      browserInfoAddressAddress / Int32Array.BYTES_PER_ELEMENT
-    ] = browserInfoAddress;
+    setInt(browserInfoAddressAddress, browserInfoAddress);
     for (let i = 0; i < userAgent.length; i++) {
       memoryBufferUint8[browserInfoAddress + i] = userAgent.charCodeAt(i);
     }
@@ -193,25 +213,25 @@ export async function buildWasm(
   };
 
   const pvGetOriginInfo = async function(originInfoAddressAddress: number): Promise<void> {
+    originInfoAddressAddress = unsignedAddress(originInfoAddressAddress);
+
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
+
     const origin = self.origin ?? self.location.origin;
     const hostname = new URL(origin).hostname;
     // eslint-disable-next-line
-    const originInfoAddress = await aligned_alloc(
+    const originInfoAddress = await alignedAlloc(
       Uint8Array.BYTES_PER_ELEMENT,
       (hostname.length + 1) * Uint8Array.BYTES_PER_ELEMENT
     );
 
     if (originInfoAddress === 0) {
       pvError?.addError('pvMallocError', "pvGetOriginInfo: cannot allocate memory for origin info");
-      memoryBufferInt32[
-        originInfoAddressAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
+      setInt(originInfoAddressAddress, 0);
       return;
     }
 
-    memoryBufferInt32[
-      originInfoAddressAddress / Int32Array.BYTES_PER_ELEMENT
-    ] = originInfoAddress;
+    setInt(originInfoAddressAddress, originInfoAddress);
     for (let i = 0; i < hostname.length; i++) {
       memoryBufferUint8[originInfoAddress + i] = hostname.charCodeAt(i);
     }
@@ -224,21 +244,24 @@ export async function buildWasm(
     modeAddress: number,
     statusAddress: number
   ) {
+    fileAddress = unsignedAddress(fileAddress);
+    pathAddress = unsignedAddress(pathAddress);
+    modeAddress = unsignedAddress(modeAddress);
+    statusAddress = unsignedAddress(statusAddress);
+
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
+
     const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
     const mode = arrayBufferToStringAtIndex(memoryBufferUint8, modeAddress);
     try {
       const file = await open(path, mode);
       PvFile.setPtr(fileAddress, file);
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
+      setInt(statusAddress, 0);
     } catch (e: any) {
       if (e.name !== "FileNotExists") {
         pvError?.addError('pvFileOpenWasm', e);
       }
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
+      setInt(statusAddress, -1);
     }
   };
 
@@ -246,17 +269,16 @@ export async function buildWasm(
     fileAddress: number,
     statusAddress: number
   ) {
+    fileAddress = unsignedAddress(fileAddress);
+    statusAddress = unsignedAddress(statusAddress);
+
     try {
       const file = await PvFile.getPtr(fileAddress);
       await file.close();
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
+      setInt(statusAddress, 0);
     } catch (e: any) {
       pvError?.addError('pvFileCloseWasm', e);
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
+      setInt(statusAddress, -1);
     }
   };
 
@@ -267,18 +289,20 @@ export async function buildWasm(
     count: number,
     numReadAddress: number
   ) {
+    fileAddress = unsignedAddress(fileAddress);
+    contentAddress = unsignedAddress(contentAddress);
+    numReadAddress = unsignedAddress(numReadAddress);
+
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
+
     try {
-      const file = await PvFile.getPtr(fileAddress);
+      const file = PvFile.getPtr(fileAddress);
       const content = await file.read(size, count);
-      memoryBufferUint8.set(content, contentAddress);
-      memoryBufferInt32[
-        numReadAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = (content.length / size);
+      memoryBufferUint8.set(content, unsignedAddress(contentAddress));
+      setInt(numReadAddress, content.length / size);
     } catch (e: any) {
       pvError?.addError('pvFileReadWasm', e);
-      memoryBufferInt32[
-        numReadAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
+      setInt(numReadAddress, -1);
     }
   };
 
@@ -289,19 +313,21 @@ export async function buildWasm(
     count: number,
     numWriteAddress: number,
   ) {
+    fileAddress = unsignedAddress(fileAddress);
+    contentAddress = unsignedAddress(contentAddress);
+    numWriteAddress = unsignedAddress(numWriteAddress);
+
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
+
     try {
-      const file = await PvFile.getPtr(fileAddress);
+      const file = PvFile.getPtr(fileAddress);
       const content = new Uint8Array(size * count);
-      content.set(memoryBufferUint8.slice(contentAddress, contentAddress + (size * count)), 0);
+      content.set(memoryBufferUint8.slice(unsignedAddress(contentAddress), unsignedAddress(contentAddress) + (size * count)), 0);
       await file.write(content);
-      memoryBufferInt32[
-        numWriteAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = (content.length / size);
+      setInt(numWriteAddress, content.length / size);
     } catch (e: any) {
       pvError?.addError('pvFileWriteWasm', e);
-      memoryBufferInt32[
-        numWriteAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 1;
+      setInt(numWriteAddress, -1);
     }
   };
 
@@ -311,17 +337,16 @@ export async function buildWasm(
     whence: number,
     statusAddress: number
   ) {
+    fileAddress = unsignedAddress(fileAddress);
+    statusAddress = unsignedAddress(statusAddress);
+
     try {
       const file = PvFile.getPtr(fileAddress);
       file.seek(offset, whence);
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
+      setInt(statusAddress, 0);
     } catch (e: any) {
       pvError?.addError('pvFileSeekWasm', e);
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
+      setInt(statusAddress, -1);
     }
   };
 
@@ -329,16 +354,15 @@ export async function buildWasm(
     fileAddress: number,
     offsetAddress: number,
   ) {
+    fileAddress = unsignedAddress(fileAddress);
+    offsetAddress = unsignedAddress(offsetAddress);
+
     try {
       const file = PvFile.getPtr(fileAddress);
-      memoryBufferInt32[
-        offsetAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = file.tell();
+      setInt(offsetAddress, file.tell());
     } catch (e: any) {
       pvError?.addError('pvFileTellWasm', e);
-      memoryBufferInt32[
-        offsetAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
+      setInt(offsetAddress, -1);
     }
   };
 
@@ -346,18 +370,19 @@ export async function buildWasm(
     pathAddress: number,
     statusAddress: number
   ) {
+    pathAddress = unsignedAddress(pathAddress);
+    statusAddress = unsignedAddress(statusAddress);
+
+    const memoryBufferUint8 = new Uint8Array(memory.buffer);
+
     const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
     try {
       const file = await open(path, "w");
       await file.remove();
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = 0;
+      setInt(statusAddress, 0);
     } catch (e: any) {
       pvError?.addError('pvFileRemoveWasm', e);
-      memoryBufferInt32[
-        statusAddress / Int32Array.BYTES_PER_ELEMENT
-      ] = -1;
+      setInt(statusAddress, -1);
     }
   };
 
@@ -399,5 +424,8 @@ export async function buildWasm(
 
   const aligned_alloc = instance.exports.aligned_alloc as aligned_alloc_type;
 
-  return instance.exports;
+  return {
+    ...instance.exports,
+    aligned_alloc: alignedAlloc,
+  };
 }
