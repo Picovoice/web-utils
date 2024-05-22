@@ -246,7 +246,7 @@ export class PvFileIDB extends PvFile {
         }
       };
 
-      req.onerror = () => {
+      store.transaction.onerror = () => {
         reject(store.transaction.error);
       };
 
