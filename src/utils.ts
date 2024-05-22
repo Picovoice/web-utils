@@ -198,7 +198,8 @@ export async function fromBase64(
   if (
     forceWrite ||
     pvFile.meta === undefined ||
-    version > pvFile.meta.version!
+    version > pvFile.meta.version! ||
+    (pvFile.meta.pageSize !== pvFile.pageSize)
   ) {
     await pvFile.write(base64ToUint8Array(modelBase64), version);
   }
@@ -222,7 +223,8 @@ export async function fromPublicDirectory(
   if (
     forceWrite ||
     pvFile.meta === undefined ||
-    version > pvFile.meta.version!
+    version > pvFile.meta.version! ||
+    (pvFile.meta.pageSize !== pvFile.pageSize)
   ) {
     if (numFetchReties < 0) {
       throw Error('numFetchRetries must be a positive number');

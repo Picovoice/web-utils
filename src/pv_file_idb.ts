@@ -39,18 +39,57 @@ export function getDB(): Promise<IDBDatabase> {
 }
 
 /**
+ * Cache Settings
+ */
+class PvCache {
+  private _pos: number;
+  private _data: Uint8Array;
+
+  constructor() {
+    this._pos = 0;
+    this._data = new Uint8Array();
+  }
+
+  public get(bytes: number): Uint8Array | undefined {
+    if (this._pos >= this._data.length) {
+      return undefined;
+    }
+
+    const res = this._data.slice(this._pos, this._pos + bytes);
+    this._pos += bytes;
+    return res;
+  }
+
+  public set(pos: number, data: Uint8Array) {
+    this._pos = pos;
+    this._data = data;
+  }
+
+  public clear() {
+    this._pos = 0;
+    this._data = new Uint8Array();
+  }
+}
+
+/**
  * PvFile Class
  * This class mocks the file system using IndexedDB.
  * IndexedDB is REQUIRED.
  */
 export class PvFileIDB extends PvFile {
-  private readonly _pageSize = 65536;
+  private readonly _pageSize = 512 * 1024; // 512KB
 
   private readonly _db: IDBDatabase;
   private readonly _mode: IDBTransactionMode;
 
   private _pagePtr = 0;
   private _pageOffset = 0;
+
+  private _cache: PvCache;
+
+  get pageSize() {
+    return this._pageSize;
+  }
 
   /**
    * Constructor of PvFile instance.
@@ -65,6 +104,8 @@ export class PvFileIDB extends PvFile {
     this._meta = meta;
     this._db = db;
     this._mode = mode;
+
+    this._cache = new PvCache();
   }
 
   /**
@@ -155,9 +196,27 @@ export class PvFileIDB extends PvFile {
       const totalElems = maxToCopy - (maxToCopy % size);
       const buffer = new Uint8Array(totalElems);
 
+      // check if there's data in cache
+      const res = this._cache.get(totalElems);
+      if (res) {
+        copied += res.length;
+        this._pageOffset += res.length;
+        if (this._pageOffset === this._pageSize) {
+          this._pagePtr += 1;
+          this._pageOffset = 0;
+        }
+
+        if (totalElems === copied) {
+          resolve(res);
+          return;
+        }
+
+        buffer.set(res);
+      }
+
       const keyRange = IDBKeyRange.bound(
         `${this._path}-${PvFileIDB.createPage(this._pagePtr)}`,
-        `${this._path}-${PvFileIDB.createPage(this._meta!.numPages)}`
+        `${this._path}-${PvFileIDB.createPage(this._pagePtr + Math.floor(totalElems / this._pageSize) + 1)}`
       );
 
       const store = this._store;
@@ -178,12 +237,23 @@ export class PvFileIDB extends PvFile {
         }
         if (copied < totalElems) {
           cursor.continue();
+        } else {
+          if (this._pageOffset !== 0) {
+            this._cache.set(this._pageOffset, cursor.value);
+          } else {
+            this._cache.clear();
+          }
+
+          if (store.transaction?.commit) {
+            store.transaction?.commit();
+          }
         }
       };
 
       store.transaction.onerror = () => {
         reject(store.transaction.error);
       };
+
       store.transaction.oncomplete = () => {
         resolve(buffer.slice(0, copied));
       };
@@ -228,7 +298,8 @@ export class PvFileIDB extends PvFile {
       const newMeta: PvFileMeta = {
         size: newSize,
         numPages: Math.ceil(newSize / this._pageSize),
-        version: version
+        version: version,
+        pageSize: this._pageSize,
       };
       store.put(newMeta, this._path);
 
@@ -245,6 +316,10 @@ export class PvFileIDB extends PvFile {
           `${this._path}-${PvFileIDB.createPage(this._meta!.numPages)}`,
           true);
         store.delete(keyRange);
+      }
+
+      if (store.transaction?.commit) {
+        store.transaction?.commit();
       }
 
       store.transaction.onerror = () => {
@@ -296,6 +371,8 @@ export class PvFileIDB extends PvFile {
 
     this._pageOffset = newOffset % this._pageSize;
     this._pagePtr = Math.floor(newOffset / this._pageSize);
+
+    this._cache.clear();
   }
 
   /**
