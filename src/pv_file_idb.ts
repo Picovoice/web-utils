@@ -77,7 +77,7 @@ class PvCache {
  * IndexedDB is REQUIRED.
  */
 export class PvFileIDB extends PvFile {
-  private _pageSize = 65536;
+  private readonly _pageSize = 512 * 1024; // 512KB
 
   private readonly _db: IDBDatabase;
   private readonly _mode: IDBTransactionMode;
@@ -86,6 +86,10 @@ export class PvFileIDB extends PvFile {
   private _pageOffset = 0;
 
   private _cache: PvCache;
+
+  get pageSize() {
+    return this._pageSize;
+  }
 
   /**
    * Constructor of PvFile instance.
@@ -202,7 +206,7 @@ export class PvFileIDB extends PvFile {
           this._pageOffset = 0;
         }
 
-        if (maxToCopy === copied) {
+        if (totalElems === copied) {
           resolve(res);
           return;
         }
@@ -294,7 +298,8 @@ export class PvFileIDB extends PvFile {
       const newMeta: PvFileMeta = {
         size: newSize,
         numPages: Math.ceil(newSize / this._pageSize),
-        version: version
+        version: version,
+        pageSize: this._pageSize,
       };
       store.put(newMeta, this._path);
 
@@ -419,13 +424,6 @@ export class PvFileIDB extends PvFile {
    */
   protected get _isEOF() {
     return (this._pagePtr >= (this._meta!.numPages - 1)) && (this._pageOffset >= (this._meta!.size % this._pageSize));
-  }
-
-  /**
-   * Set page size.
-   */
-  public setPageSize(size: number) {
-    this._pageSize = size;
   }
 
   /**

@@ -17,6 +17,7 @@ export type PvFileMeta = {
   size: number;
   numPages: number;
   version?: number;
+  pageSize?: number;
 }
 
 /**
@@ -39,6 +40,10 @@ export abstract class PvFile {
       version: 0,
       ...this._meta
     };
+  }
+
+  get pageSize(): number | undefined {
+    return undefined;
   }
 
   public abstract close(): Promise<void> | void;
