@@ -42,7 +42,7 @@ export function arrayBufferToStringAtIndex(
     indexEnd++;
   }
   const utf8decoder = new TextDecoder('utf-8');
-  return utf8decoder.decode(arrayBuffer.subarray(indexStart, indexEnd));
+  return utf8decoder.decode(arrayBuffer.slice(indexStart, indexEnd));
 }
 
 /**
