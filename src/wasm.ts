@@ -37,7 +37,7 @@ export type pv_free_type = (ptr: number) => Promise<void>;
  * @param wasm The wasm file in base64 string or stream to public path (i.e. fetch("file.wasm")) to initialize.
  * @param pvError The PvError object to store error details.
  * @param additionalImports Extra WASM imports.
- * @param wasiImports Addition WASI imports.
+ * @param wasiImports Additional WASI imports.
  * @returns An object containing the exported functions from WASM.
  */
 export async function buildWasm(
