@@ -22,12 +22,15 @@ import {
   unsignedAddress,
 } from './utils';
 
-import { PvFile } from "./pv_file";
+import { PvFile } from './pv_file';
 import { PvError } from './pv_error';
 
 import { wasiSnapshotPreview1Emulator } from './wasi_snapshot';
 
-export type aligned_alloc_type = (alignment: number, size: number) => Promise<number>;
+export type aligned_alloc_type = (
+  alignment: number,
+  size: number
+) => Promise<number>;
 export type pv_free_type = (ptr: number) => Promise<void>;
 
 /**
@@ -49,9 +52,7 @@ export async function buildWasm(
 ): Promise<any> {
   const setInt = (address: number, value: number) => {
     const memoryBufferInt32 = new Int32Array(memory.buffer);
-    memoryBufferInt32[
-      address / Int32Array.BYTES_PER_ELEMENT
-    ] = value;
+    memoryBufferInt32[address / Int32Array.BYTES_PER_ELEMENT] = value;
   };
 
   const alignedAlloc = async function (alignment: number, size: number) {
@@ -123,16 +124,13 @@ export async function buildWasm(
       memoryBufferUint8,
       endpointAddress
     );
-    const header = arrayBufferToStringAtIndex(
-      memoryBufferUint8,
-      headerAddress
-    );
+    const header = arrayBufferToStringAtIndex(memoryBufferUint8, headerAddress);
     const body = arrayBufferToStringAtIndex(memoryBufferUint8, bodyAddress);
 
     const headerObject = stringHeaderToObject(header);
 
     const options: Record<string, any> = {
-      method: httpMethod
+      method: httpMethod,
     };
 
     if (body.length > 0) {
@@ -162,7 +160,10 @@ export async function buildWasm(
     try {
       responseText = await response.text();
     } catch (error) {
-      pvError?.addError('pvHttpsRequestWasm', `Failed to get response text: ${error}`);
+      pvError?.addError(
+        'pvHttpsRequestWasm',
+        `Failed to get response text: ${error}`
+      );
       return;
     }
 
@@ -172,7 +173,10 @@ export async function buildWasm(
       (responseText.length + 1) * Int8Array.BYTES_PER_ELEMENT
     );
     if (responseAddress === 0) {
-      pvError?.addError('pvMallocError', "pvHttpsRequestWasm: cannot allocate memory for response");
+      pvError?.addError(
+        'pvMallocError',
+        'pvHttpsRequestWasm: cannot allocate memory for response'
+      );
       setInt(responseAddressAddress, 0);
       return;
     }
@@ -188,7 +192,9 @@ export async function buildWasm(
     setInt(responseCodeAddress, statusCode);
   };
 
-  const pvGetBrowserInfo = async function (browserInfoAddressAddress: number): Promise<void> {
+  const pvGetBrowserInfo = async function (
+    browserInfoAddressAddress: number
+  ): Promise<void> {
     browserInfoAddressAddress = unsignedAddress(browserInfoAddressAddress);
 
     const memoryBufferUint8 = new Uint8Array(memory.buffer);
@@ -202,7 +208,10 @@ export async function buildWasm(
     );
 
     if (browserInfoAddress === 0) {
-      pvError?.addError('pvMallocError', "pvGetBrowserInfo: cannot allocate memory for browser info");
+      pvError?.addError(
+        'pvMallocError',
+        'pvGetBrowserInfo: cannot allocate memory for browser info'
+      );
       setInt(browserInfoAddressAddress, 0);
       return;
     }
@@ -214,7 +223,9 @@ export async function buildWasm(
     memoryBufferUint8[browserInfoAddress + userAgent.length] = 0;
   };
 
-  const pvGetOriginInfo = async function(originInfoAddressAddress: number): Promise<void> {
+  const pvGetOriginInfo = async function (
+    originInfoAddressAddress: number
+  ): Promise<void> {
     originInfoAddressAddress = unsignedAddress(originInfoAddressAddress);
 
     const memoryBufferUint8 = new Uint8Array(memory.buffer);
@@ -228,7 +239,10 @@ export async function buildWasm(
     );
 
     if (originInfoAddress === 0) {
-      pvError?.addError('pvMallocError', "pvGetOriginInfo: cannot allocate memory for origin info");
+      pvError?.addError(
+        'pvMallocError',
+        'pvGetOriginInfo: cannot allocate memory for origin info'
+      );
       setInt(originInfoAddressAddress, 0);
       return;
     }
@@ -240,7 +254,7 @@ export async function buildWasm(
     memoryBufferUint8[originInfoAddress + hostname.length] = 0;
   };
 
-  const pvFileOpenWasm = async function(
+  const pvFileOpenWasm = async function (
     fileAddress: number,
     pathAddress: number,
     modeAddress: number,
@@ -260,14 +274,14 @@ export async function buildWasm(
       PvFile.setPtr(fileAddress, file);
       setInt(statusAddress, 0);
     } catch (e: any) {
-      if (e.name !== "FileNotExists") {
+      if (e.name !== 'FileNotExists') {
         pvError?.addError('pvFileOpenWasm', e);
       }
       setInt(statusAddress, -1);
     }
   };
 
-  const pvFileCloseWasm = async function(
+  const pvFileCloseWasm = async function (
     fileAddress: number,
     statusAddress: number
   ) {
@@ -284,7 +298,7 @@ export async function buildWasm(
     }
   };
 
-  const pvFileReadWasm = async function(
+  const pvFileReadWasm = async function (
     fileAddress: number,
     contentAddress: number,
     size: number,
@@ -308,12 +322,12 @@ export async function buildWasm(
     }
   };
 
-  const pvFileWriteWasm = async function(
+  const pvFileWriteWasm = async function (
     fileAddress: number,
     contentAddress: number,
     size: number,
     count: number,
-    numWriteAddress: number,
+    numWriteAddress: number
   ) {
     fileAddress = unsignedAddress(fileAddress);
     contentAddress = unsignedAddress(contentAddress);
@@ -324,7 +338,13 @@ export async function buildWasm(
     try {
       const file = PvFile.getPtr(fileAddress);
       const content = new Uint8Array(size * count);
-      content.set(memoryBufferUint8.slice(unsignedAddress(contentAddress), unsignedAddress(contentAddress) + (size * count)), 0);
+      content.set(
+        memoryBufferUint8.slice(
+          unsignedAddress(contentAddress),
+          unsignedAddress(contentAddress) + size * count
+        ),
+        0
+      );
       await file.write(content);
       setInt(numWriteAddress, content.length / size);
     } catch (e: any) {
@@ -333,7 +353,7 @@ export async function buildWasm(
     }
   };
 
-  const pvFileSeekWasm = function(
+  const pvFileSeekWasm = function (
     fileAddress: number,
     offset: number,
     whence: number,
@@ -352,10 +372,7 @@ export async function buildWasm(
     }
   };
 
-  const pvFileTellWasm = function(
-    fileAddress: number,
-    offsetAddress: number,
-  ) {
+  const pvFileTellWasm = function (fileAddress: number, offsetAddress: number) {
     fileAddress = unsignedAddress(fileAddress);
     offsetAddress = unsignedAddress(offsetAddress);
 
@@ -368,7 +385,7 @@ export async function buildWasm(
     }
   };
 
-  const pvFileRemoveWasm = async function(
+  const pvFileRemoveWasm = async function (
     pathAddress: number,
     statusAddress: number
   ) {
@@ -379,13 +396,21 @@ export async function buildWasm(
 
     const path = arrayBufferToStringAtIndex(memoryBufferUint8, pathAddress);
     try {
-      const file = await open(path, "w");
+      const file = await open(path, 'w');
       await file.remove();
       setInt(statusAddress, 0);
     } catch (e: any) {
       pvError?.addError('pvFileRemoveWasm', e);
       setInt(statusAddress, -1);
     }
+  };
+
+  const pvSleepWasm = async function (ms: number) {
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve(null);
+      }, ms);
+    });
   };
 
   const importObject = {
@@ -406,25 +431,30 @@ export async function buildWasm(
       pv_file_seek_wasm: pvFileSeekWasm,
       pv_file_tell_wasm: pvFileTellWasm,
       pv_file_remove_wasm: pvFileRemoveWasm,
+      pv_sleep_wasm: pvSleepWasm,
       ...additionalImports,
     },
     wasi: {
       ...wasiImports,
-    }
+    },
   };
 
   let instance: WebAssembly.Instance;
   if (wasm instanceof Promise) {
     if (Asyncify.instantiateStreaming) {
-      instance = (await Asyncify.instantiateStreaming(wasm, importObject)).instance;
+      instance = (await Asyncify.instantiateStreaming(wasm, importObject))
+        .instance;
     } else {
       const response = await wasm;
       const data = await response.arrayBuffer();
-      instance = (await Asyncify.instantiate(new Uint8Array(data), importObject)).instance;
+      instance = (
+        await Asyncify.instantiate(new Uint8Array(data), importObject)
+      ).instance;
     }
   } else {
     const wasmCodeArray = base64ToUint8Array(wasm);
-    instance = (await Asyncify.instantiate(wasmCodeArray, importObject)).instance;
+    instance = (await Asyncify.instantiate(wasmCodeArray, importObject))
+      .instance;
   }
 
   const aligned_alloc = instance.exports.aligned_alloc as aligned_alloc_type;
