@@ -32,9 +32,9 @@ jobs:
           node-version: ${{ matrix.node-version }}
 
       - name: Setup CMake
-        uses: jvmiguel/setup-cmake@v4
+        uses: jwlawson/actions-setup-cmake@v2
         with:
-          cmake-version: '3.28.3'
+          cmake-version: '3.28.x'
 
       - name: Pre-build dependencies
         run: npm install yarn
