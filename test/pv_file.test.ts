@@ -22,11 +22,24 @@ const buildData = (size: number) => {
 const path = 'testPath';
 const basicData = buildData(1024);
 
+const largePath = 'largeTestPath';
+const largeDataSize = 1024 * 1024 * 3;
+const largeData = buildData(largeDataSize);
+
 describe('PvFile', () => {
   it('Write file', async () => {
     try {
       const file = await open(path, 'w');
       await file.write(basicData);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
+    }
+  });
+
+  it('Write large file', async () => {
+    try {
+      const file = await open(largePath, 'w');
+      await file.write(largeData);
     } catch (e: any) {
       expect(e).eq(undefined, e.message);
     }
@@ -80,6 +93,17 @@ describe('PvFile', () => {
       const data = await file.read(1, 1024);
       expect(data).length(1024);
       expect(data).to.deep.eq(basicData);
+    } catch (e: any) {
+      expect(e).eq(undefined, e.message);
+    }
+  });
+
+  it('Read large file', async () => {
+    try {
+      const file = await open(largePath, 'r');
+      const data = await file.read(1, largeDataSize);
+      expect(data).length(largeDataSize);
+      expect(data).to.deep.eq(largeData);
     } catch (e: any) {
       expect(e).eq(undefined, e.message);
     }
