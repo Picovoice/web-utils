@@ -423,6 +423,10 @@ export class PvFileIDB extends PvFile {
    * Checks if the current stream is EOF.
    */
   protected get _isEOF() {
+    if ((this._pageOffset == 0) && (this._meta!.size % this._pageSize == 0)) {
+      return (this._pagePtr > (this._meta!.numPages - 1));
+    }
+
     return (this._pagePtr >= (this._meta!.numPages - 1)) && (this._pageOffset >= (this._meta!.size % this._pageSize));
   }
 
