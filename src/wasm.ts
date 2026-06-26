@@ -1,5 +1,5 @@
 /*
-  Copyright 2022-2023 Picovoice Inc.
+  Copyright 2022-2026 Picovoice Inc.
 
   You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
   file accompanying this source.
@@ -453,8 +453,7 @@ export async function buildWasm(
     }
   } else {
     const wasmCodeArray = base64ToUint8Array(wasm);
-    instance = (await Asyncify.instantiate(wasmCodeArray, importObject))
-      .instance;
+    instance = ((await Asyncify.instantiate(wasmCodeArray, importObject)) as any).instance;
   }
 
   const aligned_alloc = instance.exports.aligned_alloc as aligned_alloc_type;

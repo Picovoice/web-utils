@@ -1,5 +1,5 @@
 /*
-  Copyright 2022 Picovoice Inc.
+  Copyright 2022-2026 Picovoice Inc.
 
   You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
   file accompanying this source.
@@ -51,7 +51,7 @@ export function arrayBufferToStringAtIndex(
  * @param base64String input base64 string
  * @return decoded array
  */
-export function base64ToUint8Array(base64String: string): Uint8Array {
+export function base64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const base64StringDecoded = atob(base64String);
   const binaryArray = new Uint8Array(base64StringDecoded.length);
   for (let i = 0; i < base64StringDecoded.length; i++) {

@@ -1,13 +1,13 @@
 'use strict';
-const path = require('path');
-const { nodeResolve } = require('@rollup/plugin-node-resolve');
-const commonjs = require('@rollup/plugin-commonjs');
-const typescript = require('rollup-plugin-typescript2');
-const workerLoader = require('rollup-plugin-web-worker-loader');
-const pkg = require('./package.json');
-const { babel } = require('@rollup/plugin-babel');
-const terser = require('@rollup/plugin-terser');
-const { DEFAULT_EXTENSIONS } = require('@babel/core');
+import path from 'path'
+import { nodeResolve } from '@rollup/plugin-node-resolve'
+import commonjs from '@rollup/plugin-commonjs'
+import typescript from 'rollup-plugin-typescript2'
+import workerLoader from 'rollup-plugin-web-worker-loader'
+import pkg from './package.json' with { type: 'json' }
+import { babel } from '@rollup/plugin-babel'
+import terser from '@rollup/plugin-terser'
+import { DEFAULT_EXTENSIONS } from '@babel/core'
 
 const extensions = [...DEFAULT_EXTENSIONS, '.ts'];
 
@@ -26,27 +26,27 @@ const iifeBundleName = pkg.name
 console.log(iifeBundleName);
 
 export default {
-  input: [path.resolve(__dirname, pkg.entry)],
+  input: [path.resolve(import.meta.dirname, pkg.entry)],
   output: [
     {
-      file: path.resolve(__dirname, pkg['module']),
+      file: path.resolve(import.meta.dirname, pkg['module']),
       format: 'esm',
       sourcemap: false,
     },
     {
-      file: path.resolve(__dirname, 'dist', 'esm', 'index.min.js'),
+      file: path.resolve(import.meta.dirname, 'dist', 'esm', 'index.min.js'),
       format: 'esm',
       sourcemap: false,
       plugins: [terser()],
     },
     {
-      file: path.resolve(__dirname, pkg.iife),
+      file: path.resolve(import.meta.dirname, pkg.iife),
       format: 'iife',
       name: iifeBundleName,
       sourcemap: false,
     },
     {
-      file: path.resolve(__dirname, 'dist', 'iife', 'index.min.js'),
+      file: path.resolve(import.meta.dirname, 'dist', 'iife', 'index.min.js'),
       format: 'iife',
       name: iifeBundleName,
       sourcemap: false,
@@ -58,8 +58,7 @@ export default {
     commonjs(),
     workerLoader({ targetPlatform: 'browser', sourcemap: false }),
     typescript({
-      typescript: require('typescript'),
-      cacheRoot: path.resolve(__dirname, '.rts2_cache'),
+      cacheRoot: path.resolve(import.meta.dirname, '.rts2_cache'),
       clean: true,
     }),
     babel({
