@@ -1,6 +1,6 @@
 {
   "name": "@picovoice/web-utils",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "Picovoice web utility functions",
   "author": "Picovoice",
   "license": "Apache-2.0",
@@ -20,11 +20,11 @@
     "watch": "rollup --config --watch"
   },
   "devDependencies": {
-    "@babel/core": "^8.0.1",
-    "@babel/plugin-transform-runtime": "^8.0.1",
-    "@babel/preset-env": "^8.0.2",
-    "@babel/preset-typescript": "^8.0.1",
-    "@babel/runtime": "^8.0.0",
+    "@babel/core": "^7.21.3",
+    "@babel/plugin-transform-runtime": "^7.21.0",
+    "@babel/preset-env": "^7.20.2",
+    "@babel/preset-typescript": "^7.21.4",
+    "@babel/runtime": "^7.21.0",
     "@rollup/plugin-babel": "^7.1.0",
     "@rollup/plugin-commonjs": "^29.0.3",
     "@rollup/plugin-node-resolve": "^16.0.3",
