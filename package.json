@@ -1,6 +1,6 @@
 {
   "name": "@picovoice/web-utils",
-  "version": "1.4.5",
+  "version": "1.4.7",
   "description": "Picovoice web utility functions",
   "author": "Picovoice",
   "license": "Apache-2.0",
@@ -47,7 +47,7 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "commander": "^15.0.0"
+    "commander": "^13.1.0"
   },
   "bin": {
     "pvbase64": "./scripts/base64.js"
